@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a0a0d">
+  <meta name="description" content="TuneBridge moves your playlists, albums and followed artists between Spotify, Apple Music, YouTube Music, SoundCloud, TIDAL and Deezer — right in your browser.">
+  <meta property="og:title" content="TuneBridge — move your music between streaming services">
+  <meta property="og:description" content="Transfer playlists, albums and artists between Spotify, Apple Music, YouTube Music, SoundCloud, TIDAL and Deezer. Free, open source, runs in your browser.">
+  <meta property="og:type" content="website">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <title>TuneBridge — move your music between streaming services</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="styles.css?v=1">
+  <script src="config.js?v=1"></script>
+  <script type="module" src="app.js?v=1"></script>
+</head>
+<body>
+  <a class="skip-link" href="#step-source">Skip to the transfer tool</a>
+  <div class="backdrop" aria-hidden="true"><span class="orb orb-a"></span><span class="orb orb-b"></span><span class="orb orb-c"></span></div>
+
+  <header class="topbar">
+    <a class="brand" href="#top" aria-label="TuneBridge home">
+      <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true">
+        <defs><linearGradient id="brandGradient" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1ed760"/><stop offset=".5" stop-color="#35e6ff"/><stop offset="1" stop-color="#fa243c"/></linearGradient></defs>
+        <circle cx="11" cy="31" r="6" fill="url(#brandGradient)"/>
+        <circle cx="37" cy="17" r="6" fill="url(#brandGradient)"/>
+        <path d="M11 31C14 16 34 32 37 17" fill="none" stroke="url(#brandGradient)" stroke-width="4" stroke-linecap="round"/>
+      </svg>
+      <span>TuneBridge</span>
+    </a>
+    <nav class="topbar-actions" aria-label="App controls">
+      <button class="pill-button demo-toggle" id="demo-toggle" type="button" aria-pressed="false" title="Try the flow with sample data">Demo</button>
+      <button class="icon-button" id="settings-button" type="button" aria-label="Settings and API keys" title="Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
+      </button>
+      <button class="icon-button" id="about-button" type="button" aria-label="About TuneBridge" title="About">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.25"/><path d="M12 11v5.5M12 7.6v.2"/></svg>
+      </button>
+    </nav>
+  </header>
+
+  <div class="route-bar" id="route-bar" hidden>
+    <div class="route-bar-inner">
+      <button class="route-chip" id="route-source" type="button" title="Change source"></button>
+      <span class="route-line" aria-hidden="true"><i></i></span>
+      <button class="route-chip" id="route-destination" type="button" title="Change destination"><span class="route-placeholder">Choose destination</span></button>
+      <span class="route-badge" id="route-demo-badge" hidden>Demo</span>
+    </div>
+  </div>
+
+  <main id="top">
+    <section class="hero">
+      <p class="eyebrow">Playlist transfer · free · runs in your browser</p>
+      <h1>Take your music <span class="gradient-text">everywhere.</span></h1>
+      <p class="lede">TuneBridge rebuilds your playlists, saved albums and followed artists on another streaming service. Pick where your music lives today, pick where it should go, and let the bridge do the walking.</p>
+      <div class="hero-actions">
+        <a class="gradient-button hero-cta" href="#step-source" id="start-button">Start a transfer</a>
+        <button class="ghost-button" id="hero-demo-button" type="button">Watch it work with demo data</button>
+      </div>
+
+      <!-- Animated workflow: a lightweight CSS loop instead of a GIF (crisp on every screen, tiny, pauses for reduced-motion). -->
+      <div class="flow-demo" aria-label="How TuneBridge works: pick two services, choose your music, transfer">
+        <div class="flow-window">
+          <div class="flow-titlebar"><span></span><span></span><span></span><em>tunebridge · spotify → apple music</em></div>
+          <div class="flow-stage">
+            <div class="flow-scene flow-scene-pick">
+              <div class="flow-chip" style="--brand:#1ed760"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg><span>Spotify</span></div>
+              <div class="flow-beam"><i></i><i></i><i></i><i></i></div>
+              <div class="flow-chip flow-chip-destination" style="--brand:#fa243c"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M23.994 6.124a9.23 9.23 0 00-.24-2.19c-.317-1.31-1.062-2.31-2.18-3.043a5.022 5.022 0 00-1.877-.726 10.496 10.496 0 00-1.564-.15c-.04-.003-.083-.01-.124-.013H5.986c-.152.01-.303.017-.455.026-.747.043-1.49.123-2.193.4-1.336.53-2.3 1.452-2.865 2.78-.192.448-.292.925-.363 1.408-.056.392-.088.785-.1 1.18 0 .032-.007.062-.01.093v12.223c.01.14.017.283.027.424.05.815.154 1.624.497 2.373.65 1.42 1.738 2.353 3.234 2.801.42.127.856.187 1.293.228.555.053 1.11.06 1.667.06h11.03a12.5 12.5 0 001.57-.1c.822-.106 1.596-.35 2.295-.81a5.046 5.046 0 001.88-2.207c.186-.42.293-.87.37-1.324.113-.675.138-1.358.137-2.04-.002-3.8 0-7.595-.003-11.393zm-6.423 3.99v5.712c0 .417-.058.827-.244 1.206-.29.59-.76.962-1.388 1.14-.35.1-.706.157-1.07.173-.95.045-1.773-.6-1.943-1.536a1.88 1.88 0 011.038-2.022c.323-.16.67-.25 1.018-.324.378-.082.758-.153 1.134-.24.274-.063.457-.23.51-.516a.904.904 0 00.02-.193c0-1.815 0-3.63-.002-5.443a.725.725 0 00-.026-.185c-.04-.15-.15-.243-.304-.234-.16.01-.318.035-.475.066-.76.15-1.52.303-2.28.456l-2.325.47-1.374.278c-.016.003-.032.01-.048.013-.277.077-.377.203-.39.49-.002.042 0 .086 0 .13-.002 2.602 0 5.204-.003 7.805 0 .42-.047.836-.215 1.227-.278.64-.77 1.04-1.434 1.233-.35.1-.71.16-1.075.172-.96.036-1.755-.6-1.92-1.544-.14-.812.23-1.685 1.154-2.075.357-.15.73-.232 1.108-.31.287-.06.575-.116.86-.177.383-.083.583-.323.6-.714v-.15c0-2.96 0-5.922.002-8.882 0-.123.013-.25.042-.37.07-.285.273-.448.546-.518.255-.066.515-.112.774-.165.733-.15 1.466-.296 2.2-.444l2.27-.46c.67-.134 1.34-.27 2.01-.403.22-.043.442-.088.663-.106.31-.025.523.17.554.482.008.073.012.148.012.223.002 1.91.002 3.822 0 5.732z"/></svg><span>Apple Music</span></div>
+              <p class="flow-caption"><b>1</b> Pick a source and a destination</p>
+            </div>
+            <div class="flow-scene flow-scene-choose">
+              <div class="flow-list">
+                <div class="flow-row"><span class="flow-check"></span><span class="flow-cover" style="--c:#1ed760"></span><span class="flow-lines"><b style="width:46%"></b><i style="width:28%"></i></span></div>
+                <div class="flow-row"><span class="flow-check"></span><span class="flow-cover" style="--c:#35e6ff"></span><span class="flow-lines"><b style="width:62%"></b><i style="width:22%"></i></span></div>
+                <div class="flow-row"><span class="flow-check"></span><span class="flow-cover" style="--c:#a238ff"></span><span class="flow-lines"><b style="width:38%"></b><i style="width:30%"></i></span></div>
+              </div>
+              <p class="flow-caption"><b>2</b> Sign in to both and choose playlists, albums or artists</p>
+            </div>
+            <div class="flow-scene flow-scene-transfer">
+              <div class="flow-transfer-card">
+                <div class="flow-transfer-head"><span>Late Night Drive</span><span class="flow-counter"><span class="flow-count"></span></span></div>
+                <div class="flow-progress"><span></span></div>
+                <div class="flow-status"><span class="flow-status-matching">Matching tracks by ISRC, title and duration…</span><span class="flow-status-done">✓ Done — playlist rebuilt on Apple Music</span></div>
+              </div>
+              <p class="flow-caption"><b>3</b> TuneBridge rebuilds everything on the other side</p>
+            </div>
+          </div>
+          <div class="flow-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+        </div>
+      </div>
+
+      <div class="services-strip-wrap">
+        <p class="services-strip-title">Works with</p>
+        <ul class="services-strip" id="services-strip" aria-label="Supported services"></ul>
+      </div>
+    </section>
+
+    <section class="step" id="step-source" aria-labelledby="step-source-title">
+      <header class="step-header"><span class="step-number">1</span><div><h2 id="step-source-title">Where is your music now?</h2><p>Choose the service you want to copy <em>from</em>.</p></div></header>
+      <div class="service-grid" id="source-grid" role="group" aria-label="Source service"></div>
+    </section>
+
+    <section class="step" id="step-destination" aria-labelledby="step-destination-title" hidden>
+      <header class="step-header"><span class="step-number">2</span><div><h2 id="step-destination-title">Where should it go?</h2><p>Choose the service you want to copy <em>to</em>.</p></div></header>
+      <div class="service-grid" id="destination-grid" role="group" aria-label="Destination service"></div>
+    </section>
+
+    <section class="step" id="step-connect" aria-labelledby="step-connect-title" hidden>
+      <header class="step-header"><span class="step-number">3</span><div><h2 id="step-connect-title">Connect both accounts</h2><p>You sign in directly with each service. Tokens stay in this browser — TuneBridge has no server.</p></div></header>
+      <div class="connect-grid" id="connect-grid"></div>
+    </section>
+
+    <section class="step" id="step-content" aria-labelledby="step-content-title" hidden>
+      <header class="step-header"><span class="step-number">4</span><div><h2 id="step-content-title">Choose what to move</h2><p id="step-content-copy">Pick playlists, saved albums or followed artists.</p></div></header>
+      <div class="tabs" id="kind-tabs" role="tablist" aria-label="Content type"></div>
+      <div class="picker" id="picker">
+        <div class="picker-toolbar">
+          <label class="search-field"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4 4"/></svg><input id="picker-filter" type="search" placeholder="Filter…" autocomplete="off" aria-label="Filter items"></label>
+          <div class="picker-actions">
+            <button class="text-button" id="select-all" type="button">Select all</button>
+            <button class="text-button" id="select-none" type="button">Clear</button>
+            <button class="text-button" id="reload-items" type="button" title="Reload from the source">Refresh</button>
+          </div>
+        </div>
+        <div class="picker-status" id="picker-status" role="status" aria-live="polite" hidden></div>
+        <div class="item-list" id="item-list" role="group" aria-label="Items to transfer"></div>
+      </div>
+    </section>
+
+    <section class="step" id="step-transfer" aria-labelledby="step-transfer-title" hidden>
+      <header class="step-header"><span class="step-number">5</span><div><h2 id="step-transfer-title">Transfer</h2><p>Review the summary, then start. You can keep this tab open and watch it go.</p></div></header>
+      <div class="transfer-panel">
+        <div class="transfer-summary" id="transfer-summary"></div>
+        <div class="transfer-options">
+          <label class="switch"><input type="checkbox" id="option-public"><span class="switch-track" aria-hidden="true"></span><span>Make new playlists public</span></label>
+          <label class="switch"><input type="checkbox" id="option-suffix"><span class="switch-track" aria-hidden="true"></span><span>Add “(from <span id="option-suffix-source">source</span>)” to playlist names</span></label>
+        </div>
+        <div class="transfer-cta">
+          <button class="gradient-button transfer-button" id="transfer-button" type="button"><span class="transfer-button-label">Transfer</span></button>
+          <button class="ghost-button" id="cancel-button" type="button" hidden>Cancel</button>
+        </div>
+        <div class="progress-wrap" id="progress-wrap" hidden>
+          <div class="progress-head"><span id="progress-label">Working…</span><span id="progress-count"></span></div>
+          <div class="progress-bar" aria-hidden="true"><span id="progress-fill"></span></div>
+        </div>
+        <ol class="transfer-log" id="transfer-log" aria-live="polite"></ol>
+      </div>
+    </section>
+
+    <section class="step" id="step-results" aria-labelledby="step-results-title" hidden>
+      <header class="step-header"><span class="step-number">✓</span><div><h2 id="step-results-title">All done</h2><p id="results-copy"></p></div></header>
+      <div class="results-panel" id="results-panel"></div>
+      <div class="results-actions">
+        <button class="ghost-button" id="download-missing" type="button" hidden>Download missing tracks (CSV)</button>
+        <button class="ghost-button" id="transfer-more" type="button">Transfer more from the same services</button>
+        <button class="text-button" id="start-over" type="button">Start over</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="page-footer">
+    <p class="footer-copyright"><a href="https://momalekiii.github.io" target="_blank" rel="noreferrer author">© <span id="footer-year">2026</span> Momalekiii</a></p>
+    <p class="footer-note">Made with <span class="footer-heart" aria-label="love">♥</span> for people who switch. TuneBridge is open source and runs entirely in your browser. Spotify, Apple Music, YouTube Music, SoundCloud, TIDAL and Deezer are trademarks of their respective owners; TuneBridge is not affiliated with any of them.</p>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <dialog class="dialog settings-dialog" id="settings-dialog" aria-labelledby="settings-title">
+    <form method="dialog" class="dialog-body" id="settings-form">
+      <button class="dialog-close" type="button" data-close aria-label="Close">×</button>
+      <p class="eyebrow">Settings</p>
+      <h2 id="settings-title">API keys &amp; connections</h2>
+      <p class="dialog-intro">Each streaming service requires its own (free) developer app. Keys you enter here are saved only in this browser. The site owner can also pre-fill them in <code>config.js</code>.</p>
+      <div class="redirect-box">
+        <span>Redirect URI to register with every service</span>
+        <code id="redirect-uri"></code>
+        <button class="text-button" type="button" id="copy-redirect">Copy</button>
+      </div>
+      <div id="settings-services"></div>
+      <div class="dialog-actions">
+        <button class="text-button danger" type="button" id="forget-tokens">Sign out of all services</button>
+        <span class="spacer"></span>
+        <button class="ghost-button" type="button" data-close>Cancel</button>
+        <button class="gradient-button small" type="submit" id="save-settings">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="dialog about-dialog" id="about-dialog" aria-labelledby="about-title">
+    <div class="dialog-body">
+      <button class="dialog-close" type="button" data-close aria-label="Close">×</button>
+      <p class="eyebrow">About</p>
+      <h2 id="about-title">TuneBridge is a bridge, not a vault.</h2>
+      <p>Everything happens in your browser: you sign in with each service directly, TuneBridge reads your library through the official APIs, finds the same songs on the other side (by ISRC first, then title, artist and duration) and recreates your playlists there. Nothing is uploaded to a TuneBridge server, because there isn’t one.</p>
+      <h3>What can move where?</h3>
+      <div class="caps-table-wrap"><table class="caps-table" id="caps-table"></table></div>
+      <h3>Good to know</h3>
+      <ul class="about-list">
+        <li>Matches are never perfect: regional catalogs differ, and some uploads only exist on one service. Every transfer ends with a list of what could not be found, which you can download as CSV.</li>
+        <li>YouTube’s API quota limits how many tracks can be added to YouTube Music per day (about 60 with the default quota).</li>
+        <li>Apple Music needs an Apple Developer membership on the site owner’s side; Spotify apps in development mode must allow-list users. See the README for setup details.</li>
+      </ul>
+      <p class="about-credit">Created by <a href="https://momalekiii.github.io" target="_blank" rel="noreferrer">Momalekiii</a>. Open source under the MIT license.</p>
+      <div class="dialog-actions"><span class="spacer"></span><button class="gradient-button small" type="button" data-close>Got it</button></div>
+    </div>
+  </dialog>
+</body>
+</html>

@@ -2,6 +2,10 @@
 
 Lyricsify is a phone-first, installable web app for finding lyrics, saving songs in your browser, and turning 1–10 chosen lines into a shareable image. Its minimal Spotify-inspired interface places a centered logo above one search field, searches automatically after typing pauses, and shows matches in a dropdown. Saved songs, theme, and language controls are easy to reach from the header; About contains app information. Tap lyric lines to select up to ten without text-dragging. The app includes English and Persian (RTL with Vazirmatn) plus light and dark themes. The footer credits @momalekiii. The app is plain HTML, CSS, and JavaScript: no build step, framework, server, or API key is needed for the web experience.
 
+## Also in this repository: TuneBridge
+
+[`tunebridge/`](tunebridge/) is a separate web app for moving playlists, saved albums and followed artists between Spotify, Apple Music, YouTube Music, SoundCloud, TIDAL and Deezer. It is self-contained (its own README, config and assets) so it can be lifted into its own repository and published on GitHub Pages. See [tunebridge/README.md](tunebridge/README.md).
+
 ## Run it locally
 
 The site uses browser APIs (including a service worker), so serve the files over HTTP rather than opening `index.html` directly. Type a song or artist, then pause briefly for automatic search; press Enter to search immediately:
