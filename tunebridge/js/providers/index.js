@@ -6,6 +6,7 @@ import { SoundCloudProvider } from './soundcloud.js';
 import { TidalProvider } from './tidal.js';
 import { DeezerProvider } from './deezer.js';
 import { DemoProvider } from './demo.js';
+import { ImportProvider } from './import.js';
 
 const REAL = {
   spotify: SpotifyProvider,
@@ -17,6 +18,7 @@ const REAL = {
 };
 
 export function createProvider(serviceId, { demo = false, config = {} } = {}) {
+  if (serviceId === 'import') return new ImportProvider(config); // works offline, demo or not
   if (demo) return new DemoProvider(serviceId);
   const Provider = REAL[serviceId];
   if (!Provider) throw new Error(`Unknown service: ${serviceId}`);

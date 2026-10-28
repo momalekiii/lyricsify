@@ -6,6 +6,8 @@ What the services need in exchange is that **TuneBridge itself is registered wit
 
 The good news: it is a one-time job, it is free for most services, and each one takes about five minutes.
 
+There is also a path that needs **no registration at all** for the *source* side: visitors can pick **File or link** and drop a Spotify data export, Google Takeout, an Apple Music playlist export, a CSV/M3U, or paste a public Deezer link. Only the destination service has to be registered. For Spotify this is the recommended route, because Spotify now caps new apps at 5 users (see below).
+
 | Service | Cost | Time | What you paste into `config.js` | Limits you should know about |
 |---|---|---|---|---|
 | Spotify | free, but **you need Spotify Premium** | 5 min | `spotify.clientId` | Since February 2026 a *development-mode* app admits only **5 named users** that you allow-list by e-mail, and stops working if the owner's Premium lapses. Extended quota (unlimited users) is only granted to registered businesses with 250,000+ monthly users. |

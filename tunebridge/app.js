@@ -1,11 +1,13 @@
 // TuneBridge UI controller — wires the wizard steps to the provider adapters and transfer engine.
-import { SERVICES, SERVICE_IDS, KINDS, canRead, canWrite, logoSvg } from './js/services.js';
+import { SERVICES, SERVICE_IDS, LOGIN_SERVICE_IDS, KINDS, canRead, canWrite, logoSvg } from './js/services.js';
 import { createProvider } from './js/providers/index.js';
 import { consumeRedirect, getRedirectUri, tokens } from './js/oauth.js';
 import { getServiceConfig, getUserSettings, saveUserSettings, getAppConfig, isDemoMode, setDemoMode } from './js/settings.js';
 import { runTransfer, summarize, missingAsCsv } from './js/transfer.js';
 import { session } from './js/storage.js';
 import { el, debounce, pluralize } from './js/util.js';
+import { importFiles, classifyLink, importDeezerLink, LINK_HINTS, summarize as summarizeImport } from './js/importers/index.js';
+import { loadLibrary, getLibrary, addToLibrary } from './js/importers/library.js';
 
 const UI_KEY = 'tunebridge.ui.v1';
 const $ = (selector) => document.querySelector(selector);
@@ -53,7 +55,7 @@ function restoreUi() {
   const saved = session.get(UI_KEY, null);
   if (!saved) return;
   if (SERVICES[saved.source]) state.source = saved.source;
-  if (SERVICES[saved.destination] && saved.destination !== state.source) state.destination = saved.destination;
+  if (SERVICES[saved.destination] && saved.destination !== state.source && !SERVICES[saved.destination].sourceOnly) state.destination = saved.destination;
   if (KINDS.some((k) => k.id === saved.kind)) state.kind = saved.kind;
 }
 
@@ -84,12 +86,12 @@ function svg(serviceId, size = 24) {
   return template.content.firstElementChild;
 }
 
-function toast(message, type = '') {
+function toast(message, type = '', durationMs) {
   const node = $('#toast');
   node.textContent = message;
   node.className = `toast show ${type}`.trim();
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => node.classList.remove('show'), type === 'error' ? 6500 : 3800);
+  toastTimer = setTimeout(() => node.classList.remove('show'), durationMs || (type === 'error' ? 6500 : 3800));
 }
 
 function openDialog(dialog) {
@@ -150,7 +152,7 @@ const totalSelected = () => KINDS.reduce((sum, kind) => sum + state.selected[kin
 function renderStatic() {
   $('#footer-year').textContent = String(new Date().getFullYear());
   const strip = $('#services-strip');
-  strip.replaceChildren(...SERVICE_IDS.map((id) => el('li', { style: brandVars(id) }, svg(id, 18), SERVICES[id].name)));
+  strip.replaceChildren(...LOGIN_SERVICE_IDS.map((id) => el('li', { style: brandVars(id) }, svg(id, 18), SERVICES[id].name)));
   $('#redirect-uri').textContent = getRedirectUri();
 
   const table = $('#caps-table');
@@ -214,7 +216,7 @@ function renderGrids() {
   const build = (role) => {
     const selected = role === 'source' ? state.source : state.destination;
     const other = role === 'source' ? state.destination : state.source;
-    return SERVICE_IDS.map((id) => {
+    return SERVICE_IDS.filter((id) => !(role === 'destination' && SERVICES[id].sourceOnly)).map((id) => {
       const note = capabilityNote(id, role);
       const isOther = id === other;
       const button = el('button', {
@@ -226,7 +228,7 @@ function renderGrids() {
         title: isOther ? `${SERVICES[id].name} is already the ${role === 'source' ? 'destination' : 'source'}` : `${role === 'source' ? 'Copy from' : 'Copy to'} ${SERVICES[id].name}`,
         dataset: { service: id, role },
       },
-      isOther ? el('span', { class: 'service-flag', text: role === 'source' ? 'Destination' : 'Source' }) : null,
+      isOther ? el('span', { class: 'service-flag', text: role === 'source' ? 'Destination' : 'Source' }) : SERVICES[id].noLogin ? el('span', { class: 'service-flag no-login', text: 'No login' }) : null,
       el('span', { class: 'service-logo' }, svg(id, 30)),
       el('span', { class: 'service-name', text: SERVICES[id].name }),
       el('span', { class: 'service-note', text: note.supported }),
@@ -258,6 +260,7 @@ function renderConnect() {
     ['destination', state.destination],
   ].map(([role, id]) => {
     const service = SERVICES[id];
+    if (service.noLogin) return renderImportCard(role);
     const instance = provider(id);
     const connected = instance.isConnected();
     const profile = state.profiles[id];
@@ -300,6 +303,11 @@ function renderConnect() {
     return card;
   });
   grid.replaceChildren(...cards);
+  const importing = Boolean(state.source && SERVICES[state.source].noLogin);
+  $('#step-connect-title').textContent = importing ? `Import your music, then log in to ${SERVICES[state.destination]?.name || 'the destination'}` : 'Log in to both services';
+  $('#step-connect-copy').textContent = importing
+    ? 'No account needed on the source side: drop the file you exported (or paste a public link) and it stays in this browser. The destination still uses its own login page.'
+    : 'Each button opens that service’s own login page — the one you always use — and brings you straight back here. TuneBridge never sees your password; the sign-in tokens stay in this browser, because TuneBridge has no server.';
 }
 
 function renderTabs() {
@@ -473,6 +481,96 @@ function selectService(role, id) {
     persistUi();
     render();
     scrollToStep(bothConnected() ? 'step-content' : 'step-connect');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// File / link import (no-login source)
+// ---------------------------------------------------------------------------
+
+const IMPORT_ACCEPT = '.zip,.json,.csv,.tsv,.txt,.xml,.m3u,.m3u8,application/zip,application/json,text/csv,text/plain,text/xml';
+
+function renderImportCard(role) {
+  const id = 'import';
+  const service = SERVICES[id];
+  const library = getLibrary();
+  const connected = provider(id).isConnected();
+  const busy = state.busy[id];
+  const card = el('div', { class: 'connect-card import-card', style: brandVars(id) });
+  card.append(el('div', { class: 'connect-card-head' },
+    el('span', { class: 'service-logo' }, svg(id, 24)),
+    el('div', {}, el('div', { class: 'connect-role', text: role === 'source' ? 'From' : 'To' }), el('div', { class: 'connect-name', text: service.name }))));
+
+  const status = el('div', { class: 'connect-status' });
+  if (connected) status.append(el('span', { class: 'dot on' }), el('span', { text: `Imported: ${summarizeImport(library)}` }));
+  else status.append(el('span', { class: 'dot' }), el('span', { text: busy ? 'Reading…' : 'Nothing imported yet' }));
+  card.append(status);
+
+  const input = el('input', { type: 'file', multiple: true, accept: IMPORT_ACCEPT, hidden: true, id: 'import-file-input', on: { change: (event) => { handleImportFiles(event.target.files); event.target.value = ''; } } });
+  const drop = el('label', { class: `drop-zone${busy ? ' is-busy' : ''}`, for: 'import-file-input', tabindex: '0', role: 'button', 'aria-label': 'Choose files to import' },
+    el('span', { class: 'drop-icon', html: logoSvg('import', { size: 28 }) }),
+    el('strong', { text: busy ? 'Reading your files…' : connected ? 'Add more files' : 'Drop files here or click to choose' }),
+    el('span', { class: 'drop-hint', text: 'Spotify data export (ZIP), Google Takeout, Apple Music playlist (XML / TXT), CSV, M3U, or a plain “Artist – Title” list' }),
+    input);
+  drop.addEventListener('dragover', (event) => { event.preventDefault(); drop.classList.add('is-over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('is-over'));
+  drop.addEventListener('drop', (event) => { event.preventDefault(); drop.classList.remove('is-over'); handleImportFiles(event.dataTransfer?.files); });
+  drop.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); input.click(); } });
+  card.append(drop);
+
+  const linkInput = el('input', { type: 'url', class: 'link-input', placeholder: 'or paste a public Deezer playlist / album link…', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Public playlist link' });
+  const fetchButton = el('button', { type: 'button', class: 'pill-button', text: 'Fetch', disabled: Boolean(busy), on: { click: () => handleImportLink(linkInput.value) } });
+  linkInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); handleImportLink(linkInput.value); } });
+  card.append(el('div', { class: 'link-row' }, linkInput, fetchButton));
+
+  if (state.importNotes?.length) {
+    card.append(el('ul', { class: 'import-notes' }, ...state.importNotes.slice(0, 6).map((note) => el('li', { text: note }))));
+  }
+
+  const actions = el('div', { class: 'connect-actions' });
+  actions.append(el('button', { type: 'button', class: 'text-button', text: 'Where do I get these files?', on: { click: () => openDialog($('#import-help-dialog')) } }));
+  if (connected) actions.append(el('button', { type: 'button', class: 'text-button danger', text: 'Clear imported music', on: { click: () => disconnect(id) } }));
+  card.append(actions);
+  return card;
+}
+
+async function handleImportFiles(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  await runImport(() => importFiles(files), files.length === 1 ? files[0].name : `${files.length} files`);
+}
+
+async function handleImportLink(value) {
+  const link = classifyLink(value);
+  if (link.kind === 'empty') return;
+  if (link.kind !== 'deezer') {
+    toast(LINK_HINTS[link.kind] || LINK_HINTS.unknown, 'error', 9000);
+    return;
+  }
+  await runImport(() => importDeezerLink(link), 'Deezer link');
+}
+
+async function runImport(task, label) {
+  state.busy.import = true;
+  state.importNotes = [];
+  render();
+  try {
+    const result = await task();
+    const count = result.playlists.length + result.albums.length + result.artists.length;
+    const origins = [...new Set(result.playlists.map((p) => p.origin).filter(Boolean))];
+    if (count) await addToLibrary(result, origins.length === 1 ? origins[0] : label.replace(/\.[^.]+$/, ''));
+    state.importNotes = result.notes;
+    delete state.profiles.import;
+    resetContent();
+    resetTransfer();
+    if (count) toast(`Imported ${summarizeImport(result)} from ${label}.`, 'success');
+    else toast(result.notes[0] || `Nothing usable found in ${label}.`, 'error', 9000);
+  } catch (error) {
+    toast(error.message || `Could not import ${label}.`, 'error', 9000);
+  } finally {
+    state.busy.import = false;
+    render();
+    if (bothConnected()) { await loadProfile('import'); render(); scrollToStep('step-content'); }
   }
 }
 
@@ -718,7 +816,7 @@ function openSettings(focusService) {
   const container = $('#settings-services');
   const user = getUserSettings();
   const baseConfig = (window.TUNEBRIDGE_CONFIG || {});
-  container.replaceChildren(...SERVICE_IDS.map((id) => {
+  container.replaceChildren(...SERVICE_IDS.filter((id) => SERVICES[id].credentials.length).map((id) => {
     const service = SERVICES[id];
     const base = baseConfig[id] || {};
     const effective = getServiceConfig(id);
@@ -847,6 +945,7 @@ function bindEvents() {
 }
 
 async function boot() {
+  await loadLibrary(); // imported files survive the destination's login redirect
   renderStatic();
   restoreUi();
   bindEvents();

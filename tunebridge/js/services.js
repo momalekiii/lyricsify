@@ -119,7 +119,25 @@ export const SERVICES = {
     ],
     setup: 'Create an application on Deezer for Developers and set the “Application domain” to this site’s host. Sign-in uses Deezer’s browser flow; a token proxy is only needed as a fallback.',
   },
+  import: {
+    name: 'File or link',
+    color: '#f2f4ff',
+    color2: '#8f9bff',
+    ink: '#0a0a0d',
+    // Tray with an arrow going in: "import".
+    logo: 'M12 2 6.8 7.4h3.4V14h3.6V7.4h3.4L12 2zM3.5 13.5v5A2.5 2.5 0 0 0 6 21h12a2.5 2.5 0 0 0 2.5-2.5v-5H18v4.6H6v-4.6H3.5z',
+    home: '',
+    developer: '',
+    caps: { playlists: [true, false], albums: [true, false], artists: [true, false] },
+    credentials: [],
+    setup: 'Nothing to set up: visitors drop exported files (Spotify data export, Google Takeout, Apple Music playlists, CSV, M3U) or paste a public Deezer link. No login needed.',
+    sourceOnly: true,
+    noLogin: true,
+  },
 };
+
+/** Services visitors can log in to (everything except the file/link import). */
+export const LOGIN_SERVICE_IDS = Object.keys(SERVICES).filter((id) => !SERVICES[id].noLogin);
 
 export const SERVICE_IDS = Object.keys(SERVICES);
 

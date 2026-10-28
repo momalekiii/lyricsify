@@ -8,6 +8,8 @@ It is a static web app (plain HTML, CSS and JavaScript — no build step, no ser
 
 **How login works.** Visitors never need API keys or developer accounts: *Log in with Spotify* opens Spotify's own login page and brings them straight back. The only setup is a **one-time registration of TuneBridge with each service by the site owner** (free for most of them, about five minutes each) — see [SETUP.md](SETUP.md).
 
+**No login at all on the source side.** Pick **File or link** as the source and drop what the services let you export — a Spotify *Download your data* ZIP, Google Takeout, an Apple Music playlist export (XML / Plain Text), CSVs from Exportify / TuneMyMusic / Soundiiz, M3U files or a plain `Artist – Title` list — or paste a **public Deezer** playlist/album link. Everything is parsed in the browser, nothing is uploaded, and the imported library survives the destination's login redirect. This is the practical route for Spotify now that new Spotify apps are capped at 5 users.
+
 ## What can move where?
 
 | Service | Playlists | Saved albums | Followed artists |
@@ -18,6 +20,7 @@ It is a static web app (plain HTML, CSS and JavaScript — no build step, no ser
 | SoundCloud | ✓ read & write | ✓ read & write ⁴ | ✓ read & write |
 | TIDAL | ✓ read & write | ✓ read & write | ✓ read & write |
 | Deezer | ✓ read & write | ✓ read & write | ✓ read & write |
+| File or link (no login) | read ⁶ | read ⁶ | read ⁶ |
 
 "Liked Songs"-style libraries (Spotify Liked Songs, YouTube Music Liked Music, SoundCloud likes, TIDAL collection tracks, Deezer Loved Tracks, the whole Apple Music song library) appear as a special playlist and can be transferred like any other.
 
@@ -26,6 +29,7 @@ It is a static web app (plain HTML, CSS and JavaScript — no build step, no ser
 3. The YouTube Data API has no notion of saved albums.
 4. SoundCloud "albums" are playlists flagged as albums; saving one likes it.
 5. Since Spotify's February 2026 developer rules, a development-mode app can only read the contents of playlists the signed-in user owns or collaborates on; the app owner needs Spotify Premium and may allow-list 5 users (see [SETUP.md](SETUP.md)).
+6. Imports are a source only: Spotify data export (`Playlist*.json`, `YourLibrary.json`, or the whole ZIP), Google Takeout (`music library songs`, `subscriptions`), Apple Music / iTunes XML, Plain Text and M3U exports, CSV/TSV with title + artist columns, plain text lists, and public Deezer playlist / album / artist links.
 
 ## How matching works
 
@@ -81,10 +85,11 @@ Visitors can additionally bring their own developer app through the *Advanced* d
 │   ├── matching.js       title normalisation and track/album/artist scoring
 │   ├── transfer.js       the transfer engine (pure logic, no DOM)
 │   ├── settings.js       config.js + per-browser overrides
-│   └── providers/        one adapter per service + demo provider
+│   ├── importers/        no-login sources: ZIP/JSON/XML/CSV/M3U parsers, Deezer public links, IndexedDB library
+│   └── providers/        one adapter per service + demo provider + the import source
 ├── proxy/cloudflare-worker.js   token exchange proxy for SoundCloud (optionally Deezer)
 ├── scripts/apple-developer-token.mjs
-├── tests/                node --test suites (matching, engine, adapters against mocked APIs)
+├── tests/                node --test suites (matching, engine, adapters against mocked APIs, importers)
 └── .github/workflows/    CI + GitHub Pages deployment
 ```
 

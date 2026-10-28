@@ -8,6 +8,7 @@ First public release.
 - "Liked Songs"-style libraries available as special playlists.
 - ISRC/UPC-first matching with title, artist and duration scoring that rejects covers, karaoke, live and remix lookalikes.
 - Live progress, cancellation, and a downloadable CSV of anything that could not be found.
+- **File or link** source: transfer without logging in to the source. Drop a Spotify *Download your data* ZIP, Google Takeout, Apple Music XML / Plain Text / M3U exports, CSV (Exportify, TuneMyMusic, Soundiiz…) or an `Artist – Title` text list, or paste a public Deezer link. Parsed entirely in the browser; the imported library is kept in IndexedDB so it survives the destination's login redirect.
 - Spotify adapter targets the February 2026 development-mode API (`/playlists/{id}/items`, `PUT /me/library`, `POST /me/playlists`, 10-result searches) and falls back to the classic endpoints for extended-quota apps; owner-only playlist reads are explained instead of failing with 403.
 - Login-first flow: visitors just click *Log in with …* and sign in on the service's own site; the site owner registers the app once (see SETUP.md). Spotify's development-mode allow-list is explained in-app instead of a bare 403.
 - Demo mode with sample libraries; *Advanced* dialog for bring-your-own developer apps.

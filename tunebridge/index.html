@@ -103,6 +103,7 @@
       <div class="services-strip-wrap">
         <p class="services-strip-title">Works with</p>
         <ul class="services-strip" id="services-strip" aria-label="Supported services"></ul>
+        <p class="services-strip-note">No login on the source side? Choose <b>File or link</b> as the source and drop a Spotify data export, Google Takeout, an Apple Music playlist export, any CSV / M3U — or paste a public Deezer link.</p>
       </div>
     </section>
 
@@ -117,7 +118,7 @@
     </section>
 
     <section class="step" id="step-connect" aria-labelledby="step-connect-title" hidden>
-      <header class="step-header"><span class="step-number">3</span><div><h2 id="step-connect-title">Log in to both services</h2><p>Each button opens that service’s own login page — the one you always use — and brings you straight back here. TuneBridge never sees your password; the sign-in tokens stay in this browser, because TuneBridge has no server.</p></div></header>
+      <header class="step-header"><span class="step-number">3</span><div><h2 id="step-connect-title">Log in to both services</h2><p id="step-connect-copy">Each button opens that service’s own login page — the one you always use — and brings you straight back here. TuneBridge never sees your password; the sign-in tokens stay in this browser, because TuneBridge has no server.</p></div></header>
       <div class="connect-grid" id="connect-grid"></div>
     </section>
 
@@ -175,6 +176,24 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+  <dialog class="dialog help-dialog" id="import-help-dialog" aria-labelledby="import-help-title">
+    <div class="dialog-body">
+      <button class="dialog-close" type="button" data-close aria-label="Close">×</button>
+      <p class="eyebrow">Import without logging in</p>
+      <h2 id="import-help-title">Where do I get these files?</h2>
+      <p class="dialog-intro">Every file is read in this browser and nothing is uploaded. Imported music stays in this browser until you clear it.</p>
+      <dl class="help-list">
+        <div><dt>Spotify</dt><dd>Go to <a href="https://www.spotify.com/account/privacy/" target="_blank" rel="noreferrer">spotify.com/account/privacy</a> → <b>Download your data</b> → request <b>Account data</b>. Spotify e-mails a ZIP within a few days. Drop the whole ZIP here: it contains <code>Playlist1.json</code> (your playlists) and <code>YourLibrary.json</code> (Liked Songs, saved albums, followed artists). CSVs from Exportify work too.</dd></div>
+        <div><dt>Apple Music</dt><dd>In the Music app on a Mac (or Apple Music / iTunes on Windows) select a playlist, then <b>File → Library → Export Playlist…</b> and choose <b>XML</b> (best) or <b>Plain Text</b>. <b>Export Library…</b> gives one XML with every playlist. Drop the file here.</dd></div>
+        <div><dt>YouTube Music</dt><dd>Open <a href="https://takeout.google.com" target="_blank" rel="noreferrer">takeout.google.com</a> → deselect all → tick <b>YouTube and YouTube Music</b> → “All YouTube data included” → keep <b>music-library-songs</b> and <b>subscriptions</b>. Drop the ZIP or the CSVs here. Note: Takeout’s playlist files contain only video IDs, so for playlists log in with YouTube Music instead.</dd></div>
+        <div><dt>Deezer</dt><dd>Paste the link of a <b>public</b> playlist or album (open it in Deezer → Share → Copy link). Private playlists need the Deezer login.</dd></div>
+        <div><dt>Anything else</dt><dd>A CSV with title and artist columns (Soundiiz, TuneMyMusic, a spreadsheet), an M3U / M3U8 file, or a plain text file with one song per line as <code>Artist – Title</code>.</dd></div>
+        <div><dt>SoundCloud &amp; TIDAL</dt><dd>Neither offers an export; use their login buttons.</dd></div>
+      </dl>
+      <div class="dialog-actions"><button class="gradient-button small" type="button" data-close>Got it</button></div>
+    </div>
+  </dialog>
+
   <dialog class="dialog settings-dialog" id="settings-dialog" aria-labelledby="settings-title">
     <form method="dialog" class="dialog-body" id="settings-form">
       <button class="dialog-close" type="button" data-close aria-label="Close">×</button>
@@ -201,7 +220,7 @@
       <button class="dialog-close" type="button" data-close aria-label="Close">×</button>
       <p class="eyebrow">About</p>
       <h2 id="about-title">TuneBridge is a bridge, not a vault.</h2>
-      <p>Everything happens in your browser: you log in on each service’s own website (standard OAuth — TuneBridge never sees your password), TuneBridge reads your library through the official APIs, finds the same songs on the other side (by ISRC first, then title, artist and duration) and recreates your playlists there. Nothing is uploaded to a TuneBridge server, because there isn’t one.</p>
+      <p>Everything happens in your browser: you log in on each service’s own website (standard OAuth — TuneBridge never sees your password), TuneBridge reads your library through the official APIs — or from a file you exported, with no login at all — finds the same songs on the other side (by ISRC first, then title, artist and duration) and recreates your playlists there. Nothing is uploaded to a TuneBridge server, because there isn’t one.</p>
       <h3>What can move where?</h3>
       <div class="caps-table-wrap"><table class="caps-table" id="caps-table"></table></div>
       <h3>Good to know</h3>
