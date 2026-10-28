@@ -164,11 +164,9 @@ function renderStatic() {
   })));
   table.replaceChildren(el('thead', {}, head), el('tbody', {}, ...rows));
 
-  const ownerLink = document.querySelector('.footer-copyright a');
-  if (ownerLink) {
-    ownerLink.href = appConfig.ownerUrl;
-    ownerLink.lastChild.textContent = ` ${appConfig.ownerName}`;
-  }
+  for (const link of document.querySelectorAll('.footer-copyright .footer-link')) link.href = appConfig.ownerUrl;
+  const handle = document.querySelector('.footer-copyright .footer-handle');
+  if (handle) handle.textContent = `@${appConfig.ownerName.replace(/^@/, '').toLowerCase()}`;
   $('#demo-toggle').hidden = !appConfig.allowDemo;
   $('#hero-demo-button').hidden = !appConfig.allowDemo;
 }

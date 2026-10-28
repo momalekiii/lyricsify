@@ -170,8 +170,7 @@
   </main>
 
   <footer class="page-footer">
-    <p class="footer-copyright"><a href="https://momalekiii.github.io" target="_blank" rel="noreferrer author">© <span id="footer-year">2026</span> Momalekiii</a></p>
-    <p class="footer-note">Made with <span class="footer-heart" aria-label="love">♥</span> for people who switch. TuneBridge is open source and runs entirely in your browser. Spotify, Apple Music, YouTube Music, SoundCloud, TIDAL and Deezer are trademarks of their respective owners; TuneBridge is not affiliated with any of them.</p>
+    <p class="footer-copyright"><a class="footer-link" href="https://momalekiii.github.io" target="_blank" rel="noreferrer author" title="momalekiii.github.io">©</a> <span id="footer-year">2026</span> · Developed with <span class="footer-heart" aria-label="love">❤️</span> by <a class="footer-link footer-handle" href="https://momalekiii.github.io" target="_blank" rel="noreferrer author">@momalekiii</a></p>
   </footer>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -181,7 +180,7 @@
       <button class="dialog-close" type="button" data-close aria-label="Close">×</button>
       <p class="eyebrow">Settings</p>
       <h2 id="settings-title">Advanced: use your own developer apps</h2>
-      <p class="dialog-intro">Normally you don’t need anything here — you just log in. The site owner registers TuneBridge with each service once (in <code>config.js</code>) and visitors sign in with their own accounts. Use this dialog only if a service isn’t switched on for this site, or if you hit Spotify’s 25-user limit for the site’s app: paste the keys of your own (free) developer app. They are saved only in this browser and take precedence over the site’s.</p>
+      <p class="dialog-intro">Normally you don’t need anything here — you just log in. The site owner registers TuneBridge with each service once (in <code>config.js</code>) and visitors sign in with their own accounts. Use this dialog only if a service isn’t switched on for this site, or if the site’s Spotify app has used up its 5 allow-listed users (Spotify’s 2026 development-mode limit): paste the keys of your own (free) developer app. They are saved only in this browser and take precedence over the site’s.</p>
       <div class="redirect-box">
         <span>Redirect URI to register with every service</span>
         <code id="redirect-uri"></code>
@@ -211,7 +210,7 @@
         <li>YouTube’s API quota limits how many tracks can be added to YouTube Music per day (about 60 with the default quota).</li>
         <li>Apple Music needs an Apple Developer membership on the site owner’s side; Spotify apps in development mode must allow-list users. See the README for setup details.</li>
       </ul>
-      <p class="about-credit">Created by <a href="https://momalekiii.github.io" target="_blank" rel="noreferrer">Momalekiii</a>. Open source under the MIT license.</p>
+      <p class="about-credit">Created by <a href="https://momalekiii.github.io" target="_blank" rel="noreferrer">Momalekiii</a>. Open source under the MIT license. Spotify, Apple Music, YouTube Music, SoundCloud, TIDAL and Deezer are trademarks of their respective owners; TuneBridge is not affiliated with any of them.</p>
       <div class="dialog-actions"><span class="spacer"></span><button class="gradient-button small" type="button" data-close>Got it</button></div>
     </div>
   </dialog>

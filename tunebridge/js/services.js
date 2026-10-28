@@ -32,7 +32,7 @@ export const SERVICES = {
     credentials: [
       { key: 'clientId', label: 'Client ID', placeholder: 'Spotify app Client ID' },
     ],
-    setup: 'Create an app in the Spotify Developer Dashboard, add the redirect URI below, and paste the Client ID. Spotify apps in development mode can allow-list up to 25 users.',
+    setup: 'Create an app in the Spotify Developer Dashboard, add the redirect URI below, and paste the Client ID. Since February 2026 the app owner needs Spotify Premium and a development-mode app can allow-list up to 5 users.',
   },
   apple: {
     id: 'apple',

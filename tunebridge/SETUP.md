@@ -8,7 +8,7 @@ The good news: it is a one-time job, it is free for most services, and each one 
 
 | Service | Cost | Time | What you paste into `config.js` | Limits you should know about |
 |---|---|---|---|---|
-| Spotify | free | 5 min | `spotify.clientId` | *Development mode* admits only up to **25 named users** that you allow-list by e-mail. Extended quota is currently granted to registered businesses only. |
+| Spotify | free, but **you need Spotify Premium** | 5 min | `spotify.clientId` | Since February 2026 a *development-mode* app admits only **5 named users** that you allow-list by e-mail, and stops working if the owner's Premium lapses. Extended quota (unlimited users) is only granted to registered businesses with 250,000+ monthly users. |
 | Apple Music | **Apple Developer Program, US$99/year** | 15 min | `apple.developerToken` | Token expires after ≤ 180 days — renew it. Visitors need an Apple Music subscription. |
 | YouTube Music | free | 10 min | `youtube.clientId` | Until Google verifies the app: an "unverified app" warning and up to **100 test users**. API quota ≈ 60 song transfers per day unless you request more. |
 | TIDAL | free | 5 min | `tidal.clientId` | TIDAL's v2 API is still labelled beta. |
@@ -37,9 +37,11 @@ http://127.0.0.1:8000/
 
 ---
 
-## 1. Spotify (free, 5 minutes)
+## 1. Spotify (free, 5 minutes — owner needs Premium)
 
-1. Go to <https://developer.spotify.com/dashboard> and log in with your normal Spotify account.
+Read this first: Spotify tightened its developer platform on **11 February 2026** (existing apps followed on 9 March). A development-mode app now requires its owner to have an active Spotify Premium subscription, admits at most **5 allow-listed users**, and talks to a reduced API (TuneBridge already targets it: `/playlists/{id}/items`, `PUT /me/library`, search limited to 10 results). The only way past the 5-user cap is *extended quota mode*, which Spotify grants to registered businesses with a launched service and 250,000+ monthly active users — not to hobby sites. So for Spotify specifically, plan on: you + 4 people on the allow-list, and everyone else bringing their own free Spotify app via *Advanced* (they need Premium too).
+
+1. Go to <https://developer.spotify.com/dashboard> and log in with your normal (Premium) Spotify account.
 2. **Create app.** Name: `TuneBridge`. Description: anything. Website: `https://momalekiii.github.io/tunebridge/`. **Redirect URIs:** add the URI(s) from step 0. Under *Which API/SDKs are you planning to use?* tick **Web API**. Save.
 3. Open the app → **Settings** → copy the **Client ID** and paste it into `config.js`:
 
@@ -48,8 +50,8 @@ http://127.0.0.1:8000/
    ```
 
    No client secret is needed — TuneBridge uses the PKCE flow that Spotify recommends for browser apps.
-4. **Who can log in.** New Spotify apps run in *development mode*: only people you list under **User Management** (name + the e-mail of their Spotify account, up to 25) can use it. Everyone else can log in but then sees TuneBridge's message *"the Spotify app behind this site is in development mode…"*. Add your own account first.
-   - Spotify currently grants *extended quota mode* (unlimited users) only to registered businesses. For a hobby site the practical options are: allow-list your friends, or leave `allowUserKeys: true` in `config.js` so other visitors can use their own free Spotify app via *Advanced* (also a 5-minute job for them).
+4. **Who can log in.** Only people you list under **User Management** (name + the e-mail of their Spotify account, **up to 5**) can use the app. Everyone else can log in but then sees TuneBridge's message *"the Spotify app behind this site is in development mode…"*. Add your own account first.
+   - Leave `allowUserKeys: true` in `config.js` so other visitors can use their own Spotify app via *Advanced* (a 5-minute job for them; they need Premium as the app owner).
 5. Spotify's own editorial/algorithmic playlists are not readable by development-mode apps; the visitor's own playlists, liked songs, albums and followed artists are.
 
 ## 2. Apple Music (Apple Developer Program required, 15 minutes)
@@ -121,7 +123,8 @@ Apple's MusicKit only talks to apps that present a *developer token*, and those 
 | What you see | Why | Fix |
 |---|---|---|
 | Spotify: **INVALID_CLIENT: Invalid redirect URI** | The redirect URI in the Spotify dashboard doesn't match exactly. | Add `https://momalekiii.github.io/tunebridge/` (trailing slash) to the app's Redirect URIs. |
-| Spotify login works, then *"the Spotify app behind this site is in development mode…"* | That person isn't on the app's 25-user allow-list. | Dashboard → your app → **User Management** → add their name and Spotify e-mail. |
+| Spotify login works, then *"the Spotify app behind this site is in development mode…"* | That person isn't on the app's allow-list (max 5). | Dashboard → your app → **User Management** → add their name and Spotify e-mail (remove someone if the list is full). |
+| Spotify: *"Your application is blocked from accessing the Web API since you do not have a Spotify Premium subscription"* | The app owner's Premium lapsed. | Resubscribe; the app resumes automatically. |
 | Google: **Error 400: redirect_uri_mismatch** / **origin_mismatch** | Origin or redirect URI missing on the OAuth client. | Add both to the Web application client in Google Cloud. |
 | Google: **Access blocked: TuneBridge has not completed the Google verification process** | Consent screen is in Testing and the person isn't a test user. | Add them as a test user, or publish the app. |
 | Apple Music card: *login isn't switched on yet* although a token is set | Token expired (≤ 180 days) or minted for a different origin. | Re-run `scripts/apple-developer-token.mjs` and paste the new token. |
@@ -132,7 +135,7 @@ Apple's MusicKit only talks to apps that present a *developer token*, and those 
 
 **Can visitors just log in without me registering anything?** No — not on any website, including this one. Login-and-return (OAuth) always requires the site to be a registered client of the service. Your visitors still only ever use their normal username and password, on the service's own page; TuneBridge never sees it.
 
-**Do visitors have to do anything in *Advanced*?** No. That dialog exists only for people who want to use their own developer app — for example when your Spotify app's 25-user list is full. Set `allowUserKeys: false` in `config.js` to hide it entirely.
+**Do visitors have to do anything in *Advanced*?** No. That dialog exists only for people who want to use their own developer app — for example when your Spotify app's 5-user allow-list is full. Set `allowUserKeys: false` in `config.js` to hide it entirely.
 
 **Is it safe to publish the client IDs?** Yes. Browser apps are *public clients*: the IDs identify the app, they don't authenticate it. Spotify, Google, TIDAL and Deezer all designed their browser flows for exactly this. Secrets (SoundCloud) never go into the page.
 

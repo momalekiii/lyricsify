@@ -12,7 +12,7 @@ It is a static web app (plain HTML, CSS and JavaScript — no build step, no ser
 
 | Service | Playlists | Saved albums | Followed artists |
 | --- | --- | --- | --- |
-| Spotify | ✓ read & write | ✓ read & write | ✓ read & write |
+| Spotify | ✓ read & write ⁵ | ✓ read & write | ✓ read & write |
 | Apple Music | ✓ read & write | ✓ read & write | read only ¹ |
 | YouTube Music | ✓ read & write ² | — ³ | ✓ read & write (channel subscriptions) |
 | SoundCloud | ✓ read & write | ✓ read & write ⁴ | ✓ read & write |
@@ -25,6 +25,7 @@ It is a static web app (plain HTML, CSS and JavaScript — no build step, no ser
 2. The YouTube Data API's default quota (10,000 units/day) allows roughly 60–65 tracks to be *added* per day (each track costs a search + an insert). Reading from YouTube Music is cheap. You can request a higher quota from Google.
 3. The YouTube Data API has no notion of saved albums.
 4. SoundCloud "albums" are playlists flagged as albums; saving one likes it.
+5. Since Spotify's February 2026 developer rules, a development-mode app can only read the contents of playlists the signed-in user owns or collaborates on; the app owner needs Spotify Premium and may allow-list 5 users (see [SETUP.md](SETUP.md)).
 
 ## How matching works
 
@@ -63,7 +64,7 @@ Any other static host (Netlify, Vercel, Cloudflare Pages, your own server) works
 
 Everything a site owner needs — per-service steps, costs, user limits, the redirect URI, troubleshooting — lives in **[SETUP.md](SETUP.md)**. In short: register TuneBridge once with each service, paste the resulting Client ID / App ID / developer token into `config.js`, push. Keys in `config.js` are public by design (they ship to the browser); the only secret in the whole setup (SoundCloud's) goes into the included Cloudflare Worker, never into the page.
 
-Visitors can additionally bring their own developer app through the *Advanced* dialog (stored in their browser only, takes precedence over `config.js`) — handy when a Spotify development-mode app's 25-user list is full. Set `allowUserKeys: false` to hide that option.
+Visitors can additionally bring their own developer app through the *Advanced* dialog (stored in their browser only, takes precedence over `config.js`) — handy because a Spotify development-mode app admits only 5 allow-listed users (Spotify's February 2026 rules; the app owner also needs Premium). Set `allowUserKeys: false` to hide that option.
 
 ## Project layout
 

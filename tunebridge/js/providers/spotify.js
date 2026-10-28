@@ -1,4 +1,11 @@
 // Spotify Web API adapter — Authorization Code with PKCE (no secret needed in the browser).
+//
+// Targets the Web API as it looks for Development Mode apps since February 2026:
+// playlist items live under /playlists/{id}/items (entries are `item`, not `track`), saving and
+// following go through PUT /me/library with Spotify URIs, playlists are created with
+// POST /me/playlists, search accepts at most 10 results per call and GET /me no longer
+// returns `country`. Extended-quota and grandfathered apps still answer on the old endpoints,
+// so every write falls back to the legacy endpoint once if the new one answers 404/405.
 import { ProviderBase, AuthError, expiresAtFrom } from './base.js';
 import { http, ApiError } from '../http.js';
 import { beginRedirectAuth, createPkcePair, randomState, getRedirectUri } from '../oauth.js';
@@ -59,6 +66,21 @@ export class SpotifyProvider extends ProviderBase {
   constructor(config) {
     super('spotify', config);
     this.matchConcurrency = 4;
+    this.legacy = {}; // endpoint-family → true once the 2026 endpoint answered 404/405
+  }
+
+  /** Try the February-2026 endpoint first; fall back to the pre-2026 one for older apps. */
+  async modernOrLegacy(key, modern, legacy, { statuses = [404, 405] } = {}) {
+    if (this.legacy[key]) return legacy();
+    try {
+      return await modern();
+    } catch (error) {
+      if (error instanceof ApiError && statuses.includes(error.status)) {
+        this.legacy[key] = true;
+        return legacy();
+      }
+      throw error;
+    }
   }
 
   isConfigured() {
@@ -132,7 +154,7 @@ export class SpotifyProvider extends ProviderBase {
     } catch (error) {
       if (error instanceof ApiError && error.status === 403) {
         // Development-mode Spotify apps only admit users the app owner has allow-listed.
-        throw new AuthError(this.id, 'Spotify let you log in but won’t let this site read your account: the Spotify app behind this site is in development mode, which only admits up to 25 people the site owner has allow-listed. Ask the owner to add the e-mail of your Spotify account under “User Management”, or use your own Spotify app via Advanced settings.');
+        throw new AuthError(this.id, 'Spotify let you log in but won’t let this site read your account: the Spotify app behind this site is in development mode, which Spotify limits to 5 people the site owner has allow-listed. Ask the owner to add the e-mail of your Spotify account under “User Management”, or use your own Spotify app via Advanced settings.');
       }
       throw error;
     }
@@ -156,7 +178,7 @@ export class SpotifyProvider extends ProviderBase {
           id: item.id,
           name: item.name,
           description: item.description || '',
-          trackCount: item.tracks?.total ?? null,
+          trackCount: item.items?.total ?? item.tracks?.total ?? null,
           image: item.images?.[0]?.url || '',
           url: item.external_urls?.spotify || '',
           owner: item.owner?.display_name || item.owner?.id || '',
@@ -179,13 +201,27 @@ export class SpotifyProvider extends ProviderBase {
       }
       return tracks;
     }
-    const fields = 'next,items(track(id,uri,name,type,is_local,duration_ms,explicit,external_ids(isrc),external_urls(spotify),artists(name),album(name,images)))';
-    for await (const page of this.paginate(`/playlists/${playlist.id}/tracks`, { limit: 50, fields, additional_types: 'track' }, { signal })) {
-      for (const item of page.items || []) {
-        const track = toTrack(item?.track);
-        if (track) tracks.push(track);
+    const trackFields = 'id,uri,name,type,is_local,duration_ms,explicit,external_ids(isrc),external_urls(spotify),artists(name),album(name,images)';
+    const fields = `next,items(item(${trackFields}),track(${trackFields}))`; // `item` since Feb 2026, `track` before
+    const collect = async (path) => {
+      let first = true;
+      for await (const page of this.paginate(path, { limit: 50, fields, additional_types: 'track' }, { signal })) {
+        first = false;
+        for (const entry of page.items || []) {
+          const track = toTrack(entry?.item || entry?.track);
+          if (track) tracks.push(track);
+        }
+        onProgress?.(tracks.length);
       }
-      onProgress?.(tracks.length);
+      return first;
+    };
+    try {
+      await this.modernOrLegacy('playlistItems', () => collect(`/playlists/${playlist.id}/items`), () => { tracks.length = 0; return collect(`/playlists/${playlist.id}/tracks`); });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 403) {
+        throw new ApiError(`Spotify only lets this app read playlists you own or collaborate on — “${playlist.name}” belongs to someone else. Save a copy of it in Spotify first (⋯ → Add to other playlist → New playlist) and transfer that.`, { status: 403, url: error.url });
+      }
+      throw error;
     }
     return tracks;
   }
@@ -207,7 +243,7 @@ export class SpotifyProvider extends ProviderBase {
   }
 
   async search(query, type, { signal, limit = 10 } = {}) {
-    const data = await this.api('/search', { query: { q: query, type, limit, market: 'from_token' }, signal });
+    const data = await this.api('/search', { query: { q: query, type, limit: Math.min(limit, 10), market: 'from_token' }, signal });
     return data?.[`${type}s`]?.items || [];
   }
 
@@ -244,34 +280,45 @@ export class SpotifyProvider extends ProviderBase {
   }
 
   async createPlaylist({ name, description, isPublic }, { signal } = {}) {
-    const userId = await this.userId();
-    const created = await this.api(`/users/${encodeURIComponent(userId)}/playlists`, {
-      method: 'POST',
-      json: { name: name.slice(0, 100), description: (description || '').slice(0, 300), public: Boolean(isPublic) },
-      signal,
-    });
+    const json = { name: name.slice(0, 100), description: (description || '').slice(0, 300), public: Boolean(isPublic) };
+    const created = await this.modernOrLegacy('createPlaylist',
+      () => this.api('/me/playlists', { method: 'POST', json, signal }),
+      async () => this.api(`/users/${encodeURIComponent(await this.userId())}/playlists`, { method: 'POST', json, signal }));
     return { id: created.id, url: created.external_urls?.spotify || `https://open.spotify.com/playlist/${created.id}` };
   }
 
   async addTracks(playlistId, trackIds, { signal, onProgress } = {}) {
     let added = 0;
     for (const batch of chunk(trackIds, 100)) {
-      await this.api(`/playlists/${playlistId}/tracks`, { method: 'POST', json: { uris: batch.map((id) => `spotify:track:${id}`) }, signal });
+      const json = { uris: batch.map((id) => `spotify:track:${id}`) };
+      await this.modernOrLegacy('addItems',
+        () => this.api(`/playlists/${playlistId}/items`, { method: 'POST', json, signal }),
+        () => this.api(`/playlists/${playlistId}/tracks`, { method: 'POST', json, signal }));
       added += batch.length;
       onProgress?.(added);
     }
   }
 
-  async saveAlbums(albumIds, { signal } = {}) {
-    for (const batch of chunk(albumIds, 20)) {
-      await this.api('/me/albums', { method: 'PUT', json: { ids: batch }, signal, parse: 'none' });
+  /** PUT /me/library?uris=… (max 40 URIs per call) — the 2026 replacement for /me/albums, /me/following, /me/tracks. */
+  async saveToLibrary(uris, { signal } = {}) {
+    for (const batch of chunk(uris, 40)) {
+      await this.api('/me/library', { method: 'PUT', query: { uris: batch.join(',') }, signal, parse: 'none' });
     }
   }
 
+  async saveAlbums(albumIds, { signal } = {}) {
+    await this.modernOrLegacy('library',
+      () => this.saveToLibrary(albumIds.map((id) => `spotify:album:${id}`), { signal }),
+      async () => { for (const batch of chunk(albumIds, 20)) await this.api('/me/albums', { method: 'PUT', json: { ids: batch }, signal, parse: 'none' }); });
+  }
+
   async followArtists(artistIds, { signal } = {}) {
-    for (const batch of chunk(artistIds, 50)) {
-      await this.api('/me/following', { method: 'PUT', query: { type: 'artist' }, json: { ids: batch }, signal, parse: 'none' });
-    }
+    // Spotify's migration guide routes artist follows through /me/library too; the reference page
+    // doesn't list artist URIs yet, so a 400 here also falls back to the classic follow endpoint.
+    await this.modernOrLegacy('follow',
+      () => this.saveToLibrary(artistIds.map((id) => `spotify:artist:${id}`), { signal }),
+      async () => { for (const batch of chunk(artistIds, 50)) await this.api('/me/following', { method: 'PUT', query: { type: 'artist', ids: batch.join(',') }, signal, parse: 'none' }); },
+      { statuses: [400, 404, 405] });
   }
 }
 

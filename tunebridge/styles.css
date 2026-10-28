@@ -321,12 +321,15 @@ main { width: min(1100px, 100% - clamp(28px, 8vw, 72px)); margin: 0 auto; paddin
 .results-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
 
 /* Footer */
-.page-footer { padding: 36px clamp(14px, 4vw, 36px) 48px; border-top: 1px solid var(--line); text-align: center; }
-.footer-copyright { font-size: 15px; font-weight: 700; }
-.footer-copyright a { text-decoration: none; background: linear-gradient(100deg, #1ed760, #35e6ff, #a238ff, #fa243c); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: flow 7s linear infinite; }
-.footer-copyright a:hover { text-decoration: underline; text-decoration-color: var(--muted); }
-.footer-note { max-width: 720px; margin: 10px auto 0; font-size: 12px; color: var(--quiet); }
-.footer-heart { color: #fa243c; }
+.page-footer { padding: 32px clamp(14px, 4vw, 36px) 40px; border-top: 1px solid var(--line); text-align: center; }
+.footer-copyright { margin: 0; font-size: 14px; color: var(--muted); }
+.footer-link { color: var(--text); font-weight: 600; text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 0.2s, color 0.2s; }
+.footer-link:hover { border-bottom-color: currentColor; }
+.footer-handle { background: linear-gradient(100deg, #1ed760, #35e6ff, #a238ff, #fa243c); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: flow 7s linear infinite; }
+.footer-handle:hover { border-bottom-color: var(--muted); }
+.footer-heart { display: inline-block; animation: heartbeat 2.4s ease-in-out infinite; }
+@keyframes heartbeat { 0%, 100% { transform: scale(1); } 14% { transform: scale(1.18); } 28% { transform: scale(1); } 42% { transform: scale(1.12); } }
+@media (prefers-reduced-motion: reduce) { .footer-heart, .footer-handle { animation: none; } }
 
 /* Toast */
 .toast { position: fixed; left: 50%; bottom: 22px; z-index: 60; max-width: min(92vw, 520px); padding: 12px 18px; border-radius: 14px; border: 1px solid var(--line-strong); background: rgba(20, 20, 28, 0.92); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); color: var(--text); font-size: 14px; box-shadow: var(--shadow); opacity: 0; transform: translate(-50%, 12px); pointer-events: none; transition: opacity 0.25s, transform 0.25s var(--ease); }

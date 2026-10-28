@@ -21,13 +21,15 @@ window.TUNEBRIDGE_CONFIG = {
 
   // Show the "Demo" toggle so visitors can try the flow with sample libraries.
   allowDemo: true,
-  // Keep the "Advanced: use my own developer app" escape hatch (recommended: Spotify
-  // dev-mode apps are limited to 25 allow-listed users, so "bring your own app" keeps the
-  // tool usable for everyone else). Set to false to hide it completely.
+  // Keep the "Advanced: use my own developer app" escape hatch (recommended: since February
+  // 2026 a Spotify development-mode app admits only 5 allow-listed users and its owner must
+  // have Premium, so "bring your own app" is how everyone else can still use Spotify here).
+  // Set to false to hide it completely.
   allowUserKeys: true,
 
   spotify: {
     // https://developer.spotify.com/dashboard → Create app → Web API, add the redirect URI.
+    // Owner needs Spotify Premium; development mode = 5 allow-listed users (see SETUP.md).
     clientId: '',
   },
   apple: {

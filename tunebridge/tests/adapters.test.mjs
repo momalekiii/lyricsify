@@ -27,31 +27,38 @@ function mockFetch(routes) {
 
 const spotifyTrack = (id, name, artist, isrc, duration = 200000) => ({ id, uri: `spotify:track:${id}`, name, type: 'track', is_local: false, duration_ms: duration, explicit: false, external_ids: { isrc }, external_urls: { spotify: `https://open.spotify.com/track/${id}` }, artists: [{ name: artist }], album: { name: 'Album', images: [] } });
 
-test('Spotify adapter: pagination, liked songs, ISRC matching, batching', async () => {
+test('Spotify adapter (Feb-2026 API): pagination, liked songs, ISRC matching, batching, /me/library', async () => {
   tokens.set('spotify', { accessToken: 'AT', refreshToken: 'RT', expiresAt: Date.now() + 3600e3 });
   const calls = mockFetch([
-    ['https://api.spotify.com/v1/me/playlists', (url) => {
+    ['https://api.spotify.com/v1/me/playlists', (url, init) => {
+      if (init.method === 'POST') return json({ id: 'new1', external_urls: { spotify: 'https://open.spotify.com/playlist/new1' } }, 201);
       const offset = Number(url.searchParams.get('offset') || 0);
-      if (offset === 0) return json({ items: [{ id: 'p1', name: 'Road trip', description: '', tracks: { total: 2 }, images: [], external_urls: { spotify: 'x' }, owner: { display_name: 'Me' }, public: true }], next: 'https://api.spotify.com/v1/me/playlists?offset=50&limit=50' });
-      return json({ items: [{ id: 'p2', name: 'Second page', tracks: { total: 0 }, images: [], owner: {} }], next: null });
+      if (offset === 0) return json({ items: [{ id: 'p1', name: 'Road trip', description: '', items: { total: 2 }, images: [], external_urls: { spotify: 'x' }, owner: { display_name: 'Me' }, public: true }], next: 'https://api.spotify.com/v1/me/playlists?offset=50&limit=50' });
+      return json({ items: [{ id: 'p2', name: 'Second page', items: { total: 0 }, images: [], owner: {} }], next: null });
     }],
-    ['https://api.spotify.com/v1/playlists/p1/tracks', (url) => {
-      assert.match(url.searchParams.get('fields'), /external_ids\(isrc\)/);
-      return json({ items: [{ track: spotifyTrack('t1', 'Dreams', 'Fleetwood Mac', 'USRE17600016') }, { track: { type: 'episode', id: 'e1' } }, { track: null }, { track: { ...spotifyTrack('t3', 'Local', 'Me', ''), is_local: true } }], next: null });
+    ['https://api.spotify.com/v1/playlists/p1/items', (url) => {
+      assert.match(url.searchParams.get('fields'), /items\(item\(.*external_ids\(isrc\)/);
+      return json({ items: [{ item: spotifyTrack('t1', 'Dreams', 'Fleetwood Mac', 'USRE17600016') }, { item: { type: 'episode', id: 'e1' } }, { item: null }, { item: { ...spotifyTrack('t3', 'Local', 'Me', ''), is_local: true } }], next: null });
     }],
     ['https://api.spotify.com/v1/me/tracks', () => json({ items: [{ track: spotifyTrack('t9', 'Liked', 'Someone', 'XX') }], next: null })],
-    ['https://api.spotify.com/v1/me', () => json({ id: 'user1', display_name: 'User', images: [], external_urls: {} })],
+    ['https://api.spotify.com/v1/me/library', (url, init) => {
+      assert.equal(init.method, 'PUT');
+      assert.ok(url.searchParams.get('uris').split(',').length <= 40, 'at most 40 URIs per /me/library call');
+      return new Response(null, { status: 200 });
+    }],
+    ['https://api.spotify.com/v1/me', () => json({ id: 'user1', display_name: 'User', images: [], external_urls: {} })], // no `country` since 2026
     ['https://api.spotify.com/v1/search', (url) => {
+      assert.ok(Number(url.searchParams.get('limit')) <= 10, 'search limit capped at 10');
       const q = url.searchParams.get('q');
       if (q.startsWith('isrc:')) return json({ tracks: { items: [spotifyTrack('match1', 'Dreams - 2004 Remaster', 'Fleetwood Mac', 'USRE17600016')] } });
       return json({ tracks: { items: [] } });
     }],
-    ['https://api.spotify.com/v1/users/user1/playlists', (url, init) => json({ id: 'new1', external_urls: { spotify: 'https://open.spotify.com/playlist/new1' } })],
-    ['https://api.spotify.com/v1/playlists/new1/tracks', () => json({ snapshot_id: 's' }, 201)],
+    ['https://api.spotify.com/v1/playlists/new1/items', () => json({ snapshot_id: 's' }, 201)],
   ]);
   const spotify = new SpotifyProvider({ clientId: 'cid' });
   const playlists = await spotify.listPlaylists();
   assert.deepEqual(playlists.map((p) => p.id), ['__spotify_liked__', 'p1', 'p2']);
+  assert.equal(playlists[1].trackCount, 2, 'reads the renamed items.total field');
   const tracks = await spotify.getPlaylistTracks(playlists[1]);
   assert.equal(tracks.length, 1, 'episodes, nulls and local files are skipped');
   assert.equal(tracks[0].isrc, 'USRE17600016');
@@ -62,13 +69,52 @@ test('Spotify adapter: pagination, liked songs, ISRC matching, batching', async 
   assert.equal(match.score, 1);
   const created = await spotify.createPlaylist({ name: 'Road trip', description: 'd', isPublic: false });
   assert.equal(created.id, 'new1');
+  assert.ok(calls.some((c) => c.url === 'https://api.spotify.com/v1/me/playlists' && c.method === 'POST'), 'creates via POST /me/playlists');
   const ids = Array.from({ length: 150 }, (_, i) => `id${i}`);
   await spotify.addTracks('new1', ids);
-  const addCalls = calls.filter((c) => c.url.includes('/playlists/new1/tracks'));
+  const addCalls = calls.filter((c) => c.url.includes('/playlists/new1/items'));
   assert.equal(addCalls.length, 2, 'adds are batched by 100');
   assert.equal(addCalls[0].body.uris.length, 100);
   assert.equal(addCalls[0].body.uris[0], 'spotify:track:id0');
   assert.equal(addCalls[0].headers.Authorization, 'Bearer AT');
+  await spotify.saveAlbums(Array.from({ length: 45 }, (_, i) => `al${i}`));
+  await spotify.followArtists(['ar1', 'ar2']);
+  const libraryCalls = calls.filter((c) => c.url.startsWith('https://api.spotify.com/v1/me/library'));
+  assert.equal(libraryCalls.length, 3, '45 albums → 2 calls of ≤40 URIs, artists → 1 call');
+  assert.match(libraryCalls[0].url, /uris=spotify%3Aalbum%3Aal0/);
+  assert.match(libraryCalls[2].url, /uris=spotify%3Aartist%3Aar1/);
+  tokens.clear('spotify');
+});
+
+test('Spotify adapter: legacy endpoints for extended-quota/grandfathered apps, and owner-only playlists', async () => {
+  tokens.set('spotify', { accessToken: 'AT', refreshToken: 'RT', expiresAt: Date.now() + 3600e3 });
+  const gone = () => json({ error: { status: 404, message: 'Service not found' } }, 404);
+  const calls = mockFetch([
+    ['https://api.spotify.com/v1/playlists/p1/items', gone],
+    ['https://api.spotify.com/v1/playlists/p1/tracks', () => json({ items: [{ track: spotifyTrack('t1', 'Dreams', 'Fleetwood Mac', 'USRE17600016') }], next: null })],
+    [/\/v1\/playlists\/theirs\/(items|tracks)/, () => json({ error: { status: 403, message: 'Forbidden' } }, 403)],
+    ['https://api.spotify.com/v1/me/playlists', (url, init) => (init.method === 'POST' ? gone() : json({ items: [], next: null }))],
+    ['https://api.spotify.com/v1/users/user1/playlists', () => json({ id: 'new1', external_urls: {} }, 201)],
+    ['https://api.spotify.com/v1/playlists/new1/items', gone],
+    ['https://api.spotify.com/v1/playlists/new1/tracks', () => json({ snapshot_id: 's' }, 201)],
+    ['https://api.spotify.com/v1/me/library', gone],
+    ['https://api.spotify.com/v1/me/albums', () => new Response(null, { status: 200 })],
+    ['https://api.spotify.com/v1/me/following', () => new Response(null, { status: 204 })],
+    ['https://api.spotify.com/v1/me', () => json({ id: 'user1', display_name: 'User', country: 'US' })],
+  ]);
+  const spotify = new SpotifyProvider({ clientId: 'cid' });
+  const tracks = await spotify.getPlaylistTracks({ id: 'p1', name: 'Road trip' });
+  assert.equal(tracks.length, 1, 'falls back to /tracks when /items is unavailable');
+  const created = await spotify.createPlaylist({ name: 'x', description: '', isPublic: false });
+  assert.equal(created.id, 'new1');
+  await spotify.addTracks('new1', Array.from({ length: 150 }, (_, i) => `id${i}`));
+  assert.equal(calls.filter((c) => c.url.includes('/playlists/new1/items')).length, 1, 'legacy endpoint is remembered after the first 404');
+  assert.equal(calls.filter((c) => c.url.includes('/playlists/new1/tracks')).length, 2);
+  await spotify.saveAlbums(['al1']);
+  await spotify.followArtists(['ar1']);
+  assert.ok(calls.some((c) => c.url.startsWith('https://api.spotify.com/v1/me/albums') && c.method === 'PUT'));
+  assert.ok(calls.some((c) => c.url.startsWith('https://api.spotify.com/v1/me/following?type=artist&ids=ar1') && c.method === 'PUT'));
+  await assert.rejects(() => spotify.getPlaylistTracks({ id: 'theirs', name: 'Their mix' }), /playlists you own or collaborate on/);
   tokens.clear('spotify');
 });
 
@@ -144,6 +190,7 @@ test('Deezer adapter unwraps errors inside 200 responses and converts durations'
 test('runTransfer works with the real Spotify adapter as destination (mocked API)', async () => {
   tokens.set('spotify', { accessToken: 'AT', expiresAt: Date.now() + 3600e3 });
   const calls = mockFetch([
+    ['https://api.spotify.com/v1/me/playlists', () => json({ id: 'np', external_urls: { spotify: 'https://open.spotify.com/playlist/np' } }, 201)],
     ['https://api.spotify.com/v1/me', () => json({ id: 'user1', display_name: 'User' })],
     ['https://api.spotify.com/v1/search', (url) => {
       const q = url.searchParams.get('q');
@@ -152,8 +199,7 @@ test('runTransfer works with the real Spotify adapter as destination (mocked API
       if (/song two/i.test(q)) return json({ tracks: { items: [spotifyTrack('s2', 'Song Two', 'Artist', 'OTHER', 180000)] } });
       return json({ tracks: { items: [] } });
     }],
-    ['https://api.spotify.com/v1/users/user1/playlists', () => json({ id: 'np', external_urls: { spotify: 'https://open.spotify.com/playlist/np' } })],
-    ['https://api.spotify.com/v1/playlists/np/tracks', () => json({ snapshot_id: 's' }, 201)],
+    ['https://api.spotify.com/v1/playlists/np/items', () => json({ snapshot_id: 's' }, 201)],
   ]);
   const source = {
     id: 'demo', name: 'Demo', matchConcurrency: 2,
@@ -170,9 +216,9 @@ test('runTransfer works with the real Spotify adapter as destination (mocked API
   assert.equal(item.matched, 2);
   assert.equal(item.missing.length, 1);
   assert.equal(item.url, 'https://open.spotify.com/playlist/np');
-  const add = calls.find((c) => c.url.includes('/playlists/np/tracks'));
+  const add = calls.find((c) => c.url.includes('/playlists/np/items'));
   assert.deepEqual(add.body.uris, ['spotify:track:s1', 'spotify:track:s2']);
-  const create = calls.find((c) => c.url.includes('/users/user1/playlists'));
+  const create = calls.find((c) => c.url === 'https://api.spotify.com/v1/me/playlists' && c.method === 'POST');
   assert.match(create.body.description, /Transferred from Demo with TuneBridge/);
   tokens.clear('spotify');
 });
