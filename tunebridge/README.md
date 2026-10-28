@@ -1,35 +1,45 @@
 # TuneBridge
 
-**Move your music between streaming services — right in your browser.**
+**Paste a playlist link. Get it on another streaming service.**
 
-TuneBridge rebuilds your playlists, saved albums and followed artists on another service. Pick a source, pick a destination, sign in to both, tick what you want to move, and watch it go. It supports **Spotify, Apple Music, YouTube Music, SoundCloud, TIDAL and Deezer**, in every direction the services' APIs allow.
+TuneBridge copies a public playlist (or album) from **Spotify, Apple Music, YouTube Music, SoundCloud, TIDAL or Deezer** to any of them. The visitor's side could not be simpler:
 
-It is a static web app (plain HTML, CSS and JavaScript — no build step, no server, no database). You sign in with each service directly through its official login; the tokens stay in your browser. Nothing is uploaded anywhere because there is nowhere to upload it to.
+1. **Paste the link** of a public playlist — the box lights up in that service's colours and shows its logo.
+2. **Check the preview** — cover, name and every song, read without logging in anywhere.
+3. **Pick where it should go and log in there** — on that service's own website, with the login they always use. The transfer starts by itself the moment they come back.
 
-**How login works.** Visitors never need API keys or developer accounts: *Log in with Spotify* opens Spotify's own login page and brings them straight back. The only setup is a **one-time registration of TuneBridge with each service by the site owner** (free for most of them, about five minutes each) — see [SETUP.md](SETUP.md).
+No accounts to create, no API keys, no passwords typed into TuneBridge, nothing to install. It is a static web app (plain HTML, CSS and JavaScript — no build step, no database) that runs in the browser and is published on GitHub Pages.
 
-**No login at all on the source side.** Pick **File or link** as the source and drop what the services let you export — a Spotify *Download your data* ZIP, Google Takeout, an Apple Music playlist export (XML / Plain Text), CSVs from Exportify / TuneMyMusic / Soundiiz, M3U files or a plain `Artist – Title` list — or paste a **public Deezer** playlist/album link. Everything is parsed in the browser, nothing is uploaded, and the imported library survives the destination's login redirect. This is the practical route for Spotify now that new Spotify apps are capped at 5 users.
+**Source without login.** The pasted link is read through public data: Deezer's public API directly from the browser; YouTube through the (free) YouTube Data API; Spotify, Apple Music, SoundCloud and TIDAL through a tiny helper worker the site owner deploys once (see below). Visitors who have a private playlist — or want their whole library — can **drop an exported file** instead (Spotify *Download your data* ZIP, Apple Music XML, Google Takeout, CSV, M3U…), which is parsed entirely in the browser.
 
-## What can move where?
+**Destination with the real login.** Writing into someone's account is only possible with their permission, so the destination uses the service's official login page (OAuth). The site owner registers TuneBridge with each destination service once — free for most of them, about five minutes each — see [SETUP.md](SETUP.md). Visitors never see any of that.
 
-| Service | Playlists | Saved albums | Followed artists |
+## What can go where?
+
+| Pasted link (source, no login) | Reads | How |
+| --- | --- | --- |
+| Deezer playlist / album | ✓ | public API, straight from the browser — works with zero setup |
+| YouTube / YouTube Music playlist | ✓ (public or unlisted) | free YouTube Data API key, or the helper worker |
+| Spotify playlist / album | ✓ first ≈100 songs ¹ | helper worker reads the public embed page |
+| Apple Music playlist / album | ✓ ¹ | helper worker reads the public page |
+| SoundCloud playlist | ✓ | helper worker + SoundCloud API credentials |
+| TIDAL playlist / album | ✓ | helper worker + TIDAL API credentials |
+| Dropped file | ✓ playlists, albums, artists | Spotify data export (ZIP / `Playlist*.json` / `YourLibrary.json`), Google Takeout, Apple Music / iTunes XML, Plain Text and M3U exports, CSV/TSV (Exportify, TuneMyMusic, Soundiiz…), `Artist – Title` text lists |
+
+| Destination (login) | Playlists | Saved albums | Followed artists |
 | --- | --- | --- | --- |
-| Spotify | ✓ read & write ⁵ | ✓ read & write | ✓ read & write |
-| Apple Music | ✓ read & write | ✓ read & write | read only ¹ |
-| YouTube Music | ✓ read & write ² | — ³ | ✓ read & write (channel subscriptions) |
-| SoundCloud | ✓ read & write | ✓ read & write ⁴ | ✓ read & write |
-| TIDAL | ✓ read & write | ✓ read & write | ✓ read & write |
-| Deezer | ✓ read & write | ✓ read & write | ✓ read & write |
-| File or link (no login) | read ⁶ | read ⁶ | read ⁶ |
+| Spotify | ✓ | ✓ | ✓ |
+| Apple Music | ✓ | ✓ | — ² |
+| YouTube Music | ✓ ³ | — ⁴ | ✓ (channel subscriptions) |
+| SoundCloud | ✓ | ✓ ⁵ | ✓ |
+| TIDAL | ✓ | ✓ | ✓ |
+| Deezer | ✓ | ✓ | ✓ |
 
-"Liked Songs"-style libraries (Spotify Liked Songs, YouTube Music Liked Music, SoundCloud likes, TIDAL collection tracks, Deezer Loved Tracks, the whole Apple Music song library) appear as a special playlist and can be transferred like any other.
-
-1. Apple Music has no public API for following/favouriting artists, so artists can be read from Apple Music but not written to it.
-2. The YouTube Data API's default quota (10,000 units/day) allows roughly 60–65 tracks to be *added* per day (each track costs a search + an insert). Reading from YouTube Music is cheap. You can request a higher quota from Google.
-3. The YouTube Data API has no notion of saved albums.
-4. SoundCloud "albums" are playlists flagged as albums; saving one likes it.
-5. Since Spotify's February 2026 developer rules, a development-mode app can only read the contents of playlists the signed-in user owns or collaborates on; the app owner needs Spotify Premium and may allow-list 5 users (see [SETUP.md](SETUP.md)).
-6. Imports are a source only: Spotify data export (`Playlist*.json`, `YourLibrary.json`, or the whole ZIP), Google Takeout (`music library songs`, `subscriptions`), Apple Music / iTunes XML, Plain Text and M3U exports, CSV/TSV with title + artist columns, plain text lists, and public Deezer playlist / album / artist links.
+1. Spotify and Apple Music have no key-free API, so the worker reads what their public pages show — the first ≈100 songs — and the app says so in the preview. For longer playlists visitors drop an export file (the help dialog explains where to get it). Page scraping is best effort: if either service redesigns its pages the worker returns a clear error and the app points to the file route.
+2. Apple Music has no public API for following artists.
+3. The YouTube Data API's default quota (10,000 units/day) allows roughly 60–65 tracks to be *added* per day. You can request a higher quota from Google.
+4. The YouTube Data API has no notion of saved albums.
+5. SoundCloud "albums" are playlists flagged as albums; saving one likes it.
 
 ## How matching works
 
@@ -37,7 +47,7 @@ For every track TuneBridge first tries the **ISRC** (the industry-standard recor
 
 ## Try it
 
-- **Live:** <https://momalekiii.github.io/tunebridge/> — the *Demo* toggle in the top bar runs the whole flow with sample libraries and needs no keys.
+- **Live:** <https://momalekiii.github.io/tunebridge/> — paste any public **Deezer** playlist link and it works with no setup at all; add `#demo` to the URL to use a sample destination that touches no real account.
 - **Locally** (from the repository root):
 
   ```bash
@@ -64,11 +74,14 @@ Any other static host (Netlify, Vercel, Cloudflare Pages, your own server) works
 2. Bump the cache-busting query strings in `index.html` (`styles.css?v=…`, `app.js?v=…`, `config.js?v=…`) so returning visitors get the new files.
 3. Push to `main` (deploys automatically), then tag it: `git tag v1.0.0 && git push --tags` and, optionally, `gh release create v1.0.0 --notes-file CHANGELOG.md`.
 
-## Setting up the services
+## Setting up the services (site owner, once)
 
-Everything a site owner needs — per-service steps, costs, user limits, the redirect URI, troubleshooting — lives in **[SETUP.md](SETUP.md)**. In short: register TuneBridge once with each service, paste the resulting Client ID / App ID / developer token into `config.js`, push. Keys in `config.js` are public by design (they ship to the browser); the only secret in the whole setup (SoundCloud's) goes into the included Cloudflare Worker, never into the page.
+Everything lives in **[SETUP.md](SETUP.md)**. In short:
 
-Visitors can additionally bring their own developer app through the *Advanced* dialog (stored in their browser only, takes precedence over `config.js`) — handy because a Spotify development-mode app admits only 5 allow-listed users (Spotify's February 2026 rules; the app owner also needs Premium). Set `allowUserKeys: false` to hide that option.
+- **Helper worker** (reads Spotify / Apple Music / SoundCloud / TIDAL links, ≈5 minutes, free): paste `proxy/cloudflare-worker.js` into a Cloudflare Worker, set `ALLOWED_ORIGINS`, put its URL into `config.js → resolverUrl`. Optional secrets add YouTube (API key), SoundCloud and TIDAL link reading. Deezer links need nothing.
+- **Destinations**: register TuneBridge once with each service you want people to be able to transfer *to*, paste the Client ID / App ID / developer token into `config.js`, push. Keys in `config.js` are public by design; the only secrets (SoundCloud, TIDAL, YouTube key) live in the worker.
+
+Nothing technical is shown to visitors. The owner settings dialog is reachable by adding `#setup` to the URL (or via *About → Site owner settings*); services that aren't configured simply say so when picked as a destination.
 
 ## Project layout
 
@@ -85,11 +98,11 @@ Visitors can additionally bring their own developer app through the *Advanced* d
 │   ├── matching.js       title normalisation and track/album/artist scoring
 │   ├── transfer.js       the transfer engine (pure logic, no DOM)
 │   ├── settings.js       config.js + per-browser overrides
-│   ├── importers/        no-login sources: ZIP/JSON/XML/CSV/M3U parsers, Deezer public links, IndexedDB library
+│   ├── importers/        pasted links (classifier, Deezer/YouTube direct, resolver client) + file parsers (ZIP/JSON/XML/CSV/M3U) + IndexedDB library
 │   └── providers/        one adapter per service + demo provider + the import source
 ├── proxy/cloudflare-worker.js   token exchange proxy for SoundCloud (optionally Deezer)
 ├── scripts/apple-developer-token.mjs
-├── tests/                node --test suites (matching, engine, adapters against mocked APIs, importers)
+├── tests/                node --test suites (matching, engine, adapters against mocked APIs, importers, resolver worker)
 └── .github/workflows/    CI + GitHub Pages deployment
 ```
 

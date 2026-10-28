@@ -1,7 +1,7 @@
 {
   "name": "TuneBridge — move your music between streaming services",
   "short_name": "TuneBridge",
-  "description": "Transfer playlists, albums and followed artists between Spotify, Apple Music, YouTube Music, SoundCloud, TIDAL and Deezer.",
+  "description": "Paste a public playlist link and get it on Spotify, Apple Music, YouTube Music, SoundCloud, TIDAL or Deezer.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

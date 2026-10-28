@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
 
-import { importBytes, importFiles, summarize, classifyLink, importDeezerLink } from '../js/importers/index.js';
+import { importBytes, importFiles, summarize, classifyLink, linkHint, importDeezerLink, importLink, cleanVideoTitle } from '../js/importers/index.js';
 import { parseDelimited, parseDuration, splitArtistTitle, importDelimited } from '../js/importers/text.js';
 import { parsePlist, importApplePlist } from '../js/importers/apple-music.js';
 import { importSpotifyJson } from '../js/importers/spotify-export.js';
@@ -194,15 +194,42 @@ test('importFiles merges several files and summarize() describes the result', as
   assert.equal(summarize({ playlists: [{ tracks: [] }, { tracks: [{}] }], albums: [{}, {}], artists: [{}] }), '2 playlists (1 song) · 2 albums · 1 artist');
 });
 
-test('Deezer public links: classification and fetching without any key', async () => {
-  assert.deepEqual(classifyLink('https://www.deezer.com/en/playlist/908622995'), { kind: 'deezer', type: 'playlist', id: '908622995', url: 'https://www.deezer.com/en/playlist/908622995' });
+test('Link classification: all six services, URIs, short links, and unusable links', () => {
+  assert.deepEqual(classifyLink('https://www.deezer.com/en/playlist/908622995'), { kind: 'link', platform: 'deezer', type: 'playlist', id: '908622995', url: 'https://www.deezer.com/playlist/908622995' });
   assert.equal(classifyLink('deezer.com/album/302127').type, 'album');
-  assert.equal(classifyLink('https://deezer.page.link/abc').kind, 'deezer-short');
-  assert.equal(classifyLink('https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M').kind, 'spotify');
-  assert.equal(classifyLink('https://music.apple.com/us/playlist/x/pl.123').kind, 'apple');
+  assert.equal(classifyLink('https://deezer.page.link/abc').type, 'short');
+  const spotify = classifyLink('https://open.spotify.com/intl-de/playlist/37i9dQZF1DXcBWIGoYBM5M?si=abc');
+  assert.deepEqual(spotify, { kind: 'link', platform: 'spotify', type: 'playlist', id: '37i9dQZF1DXcBWIGoYBM5M', url: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M' });
+  assert.equal(classifyLink('spotify:album:4LH4d3cOWNNsVw41Gqt2kv').type, 'album');
+  assert.equal(classifyLink('https://open.spotify.com/track/37i9dQZF1DXcBWIGoYBM5M').type, 'track');
+  assert.equal(classifyLink('https://spotify.link/abc').type, 'short');
+  const apple = classifyLink('https://music.apple.com/us/playlist/todays-hits/pl.f4d106fed2bd41149aaacabb233eb5eb');
+  assert.equal(apple.platform, 'apple'); assert.equal(apple.type, 'playlist'); assert.equal(apple.id, 'pl.f4d106fed2bd41149aaacabb233eb5eb'); assert.equal(apple.storefront, 'us');
+  assert.equal(classifyLink('https://music.apple.com/gb/album/discovery/697194953').type, 'album');
+  assert.equal(classifyLink('https://music.apple.com/gb/album/discovery/697194953?i=697195787').type, 'track');
+  assert.equal(classifyLink('https://music.youtube.com/playlist?list=PLabc&si=1').id, 'PLabc');
+  assert.equal(classifyLink('https://www.youtube.com/watch?v=xyz&list=PLabc').type, 'playlist');
+  assert.equal(classifyLink('https://www.youtube.com/playlist?list=WL').type, 'private');
+  assert.equal(classifyLink('https://youtu.be/xyz').type, 'track');
+  assert.deepEqual(classifyLink('https://soundcloud.com/some-user/sets/my-mix'), { kind: 'link', platform: 'soundcloud', type: 'playlist', id: 'some-user/sets/my-mix', url: 'https://soundcloud.com/some-user/sets/my-mix' });
+  assert.equal(classifyLink('https://soundcloud.com/some-user/one-track').type, 'track');
+  assert.equal(classifyLink('https://tidal.com/browse/playlist/1b418bb8-90a7-4f87-901d-707993838346').type, 'playlist');
+  assert.equal(classifyLink('https://listen.tidal.com/album/77646169').type, 'album');
   assert.equal(classifyLink('not a url at all').kind, 'invalid');
   assert.equal(classifyLink('https://example.com/x').kind, 'unknown');
+  assert.equal(classifyLink('').kind, 'empty');
 
+  // hints
+  assert.equal(linkHint(classifyLink('https://www.deezer.com/playlist/1')), null, 'Deezer needs nothing');
+  assert.match(linkHint(spotify), /isn’t switched on/, 'Spotify needs the helper worker');
+  assert.equal(linkHint(spotify, { resolverEnabled: true }), null);
+  assert.equal(linkHint(classifyLink('https://music.youtube.com/playlist?list=PLabc'), { youtubeDirect: true }), null, 'YouTube works with an API key');
+  assert.match(linkHint(classifyLink('https://open.spotify.com/track/37i9dQZF1DXcBWIGoYBM5M'), { resolverEnabled: true }), /single song/);
+  assert.match(linkHint(classifyLink('https://spotify.link/abc')), /shortened link/);
+  assert.equal(linkHint(classifyLink('https://spotify.link/abc'), { resolverEnabled: true }), null, 'the worker expands short links');
+});
+
+test('Deezer public links: fetching without any key', async () => {
   const requests = [];
   globalThis.fetch = async (url) => {
     requests.push(url);
@@ -225,4 +252,51 @@ test('Deezer public links: classification and fetching without any key', async (
   assert.equal(album.albums[0].upc, '724384960650');
   await assert.rejects(() => importDeezerLink(classifyLink('https://www.deezer.com/playlist/1')), /isn’t public/);
   assert.ok(requests.every((r) => !/access_token/.test(r)), 'no token is ever sent');
+});
+
+test('importLink: routes YouTube to the Data API with a key, everything else to the resolver, and maps resolver errors', async () => {
+  const requests = [];
+  globalThis.fetch = async (url) => {
+    requests.push(String(url));
+    const u = new URL(String(url));
+    const ok = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+    if (u.hostname === 'www.googleapis.com' && u.pathname.endsWith('/playlists')) return ok({ items: [{ snippet: { title: 'Gym', channelTitle: 'Me', thumbnails: { medium: { url: 'thumb' } } }, contentDetails: { itemCount: 2 } }] });
+    if (u.hostname === 'www.googleapis.com' && u.pathname.endsWith('/playlistItems')) return ok({ items: [
+      { snippet: { title: 'Fleetwood Mac - Dreams (Official Music Video)', videoOwnerChannelTitle: 'FleetwoodMacVEVO' }, contentDetails: { videoId: 'v1' } },
+      { snippet: { title: 'Private video' }, contentDetails: { videoId: 'v2' } },
+      { snippet: { title: 'Nights', videoOwnerChannelTitle: 'Frank Ocean - Topic' }, contentDetails: { videoId: 'v3' } },
+    ] });
+    if (u.hostname === 'helper.example' && u.pathname === '/resolve') {
+      const target = u.searchParams.get('url');
+      if (/open\.spotify\.com/.test(target)) return ok({ ok: true, result: { platform: 'spotify', playlists: [{ id: 'spotify:playlist:x', name: 'Hits', image: 'img', url: target, owner: 'Spotify', tracks: [{ id: 'spotify:track:1', title: 'Dreams', artists: ['Fleetwood Mac'], durationMs: 257000 }] }], albums: [], artists: [], notes: ['first 100 only'] } });
+      if (/music\.apple\.com/.test(target)) return ok({ ok: false, error: 'not_public', message: 'x' }, 403);
+      return ok({ ok: false, error: 'parse_failed' }, 400);
+    }
+    return ok({}, 404);
+  };
+  const yt = await importLink(classifyLink('https://music.youtube.com/playlist?list=PLabc'), { config: { youtubeApiKey: 'KEY' } });
+  assert.equal(yt.playlists[0].name, 'Gym');
+  assert.deepEqual(yt.playlists[0].tracks.map((t) => [t.title, t.artists]), [['Dreams', ['Fleetwood Mac']], ['Nights', ['Frank Ocean']]]);
+  assert.equal(yt.playlists[0].platform, 'youtube');
+  assert.match(yt.notes.join(' '), /1 private or deleted video was skipped/);
+  assert.ok(requests.some((r) => /key=KEY/.test(r)) && requests.every((r) => !/helper\.example/.test(r)), 'direct API call, no resolver');
+
+  const sp = await importLink(classifyLink('https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M'), { config: { resolverUrl: 'https://helper.example/' } });
+  assert.equal(sp.playlists[0].name, 'Hits');
+  assert.equal(sp.playlists[0].tracks[0].artists[0], 'Fleetwood Mac');
+  assert.deepEqual(sp.notes, ['first 100 only']);
+  assert.ok(requests.some((r) => r.startsWith('https://helper.example/resolve?url=https%3A%2F%2Fopen.spotify.com')), 'resolver called with the canonical link');
+
+  await assert.rejects(() => importLink(classifyLink('https://music.apple.com/us/playlist/x/pl.1'), { config: { resolverUrl: 'https://helper.example' } }), /isn’t public/);
+  await assert.rejects(() => importLink(classifyLink('https://tidal.com/browse/playlist/1b418bb8-90a7-4f87-901d-707993838346'), { config: { resolverUrl: 'https://helper.example' } }), /changed its page layout/);
+  await assert.rejects(() => importLink(classifyLink('https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M'), { config: {} }), /isn’t switched on/);
+});
+
+test('YouTube video titles are turned into artist + song', () => {
+  assert.deepEqual(cleanVideoTitle('Fleetwood Mac - Dreams (Official Music Video) [HD]', 'FleetwoodMacVEVO'), { title: 'Dreams', artists: ['Fleetwood Mac'] });
+  assert.deepEqual(cleanVideoTitle('Nights', 'Frank Ocean - Topic'), { title: 'Nights', artists: ['Frank Ocean'] });
+  assert.deepEqual(cleanVideoTitle('Daft Punk - Get Lucky (Official Audio) ft. Pharrell Williams', 'DaftPunkVEVO').artists, ['Daft Punk']);
+  assert.equal(cleanVideoTitle('The Weeknd - Blinding Lights (Lyrics)', 'Lyrics Hub').title, 'Blinding Lights');
+  assert.deepEqual(cleanVideoTitle('Some Random Upload', 'Random Channel'), { title: 'Some Random Upload', artists: [] });
+  assert.deepEqual(cleanVideoTitle('Bohemian Rhapsody by Queen', 'x'), { title: 'Bohemian Rhapsody', artists: ['Queen'] });
 });

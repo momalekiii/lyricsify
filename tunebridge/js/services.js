@@ -120,7 +120,7 @@ export const SERVICES = {
     setup: 'Create an application on Deezer for Developers and set the “Application domain” to this site’s host. Sign-in uses Deezer’s browser flow; a token proxy is only needed as a fallback.',
   },
   import: {
-    name: 'File or link',
+    name: 'Link or file',
     color: '#f2f4ff',
     color2: '#8f9bff',
     ink: '#0a0a0d',
@@ -130,7 +130,7 @@ export const SERVICES = {
     developer: '',
     caps: { playlists: [true, false], albums: [true, false], artists: [true, false] },
     credentials: [],
-    setup: 'Nothing to set up: visitors drop exported files (Spotify data export, Google Takeout, Apple Music playlists, CSV, M3U) or paste a public Deezer link. No login needed.',
+    setup: 'Nothing to set up for visitors: they paste a public playlist link or drop an exported file. Reading Spotify / Apple Music / SoundCloud / TIDAL links needs the helper worker (resolverUrl in config.js); YouTube links need a free API key or the worker; Deezer links work out of the box.',
     sourceOnly: true,
     noLogin: true,
   },

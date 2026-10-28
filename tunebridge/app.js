@@ -1,36 +1,38 @@
-// TuneBridge UI controller — wires the wizard steps to the provider adapters and transfer engine.
-import { SERVICES, SERVICE_IDS, LOGIN_SERVICE_IDS, KINDS, canRead, canWrite, logoSvg } from './js/services.js';
+// TuneBridge UI controller — paste a public playlist link (or drop an exported file), preview the
+// songs, pick a destination, log in there, and the transfer engine rebuilds the playlist.
+import { SERVICES, SERVICE_IDS, LOGIN_SERVICE_IDS, KINDS, canWrite, logoSvg } from './js/services.js';
 import { createProvider } from './js/providers/index.js';
 import { consumeRedirect, getRedirectUri, tokens } from './js/oauth.js';
 import { getServiceConfig, getUserSettings, saveUserSettings, getAppConfig, isDemoMode, setDemoMode } from './js/settings.js';
 import { runTransfer, summarize, missingAsCsv } from './js/transfer.js';
 import { session } from './js/storage.js';
-import { el, debounce, pluralize } from './js/util.js';
-import { importFiles, classifyLink, importDeezerLink, LINK_HINTS, summarize as summarizeImport } from './js/importers/index.js';
-import { loadLibrary, getLibrary, addToLibrary } from './js/importers/library.js';
+import { el, debounce, formatDuration, isAbortError } from './js/util.js';
+import { importFiles, classifyLink, linkHint, importLink, peekLink, PLATFORM_NAMES, summarize as summarizeImport } from './js/importers/index.js';
+import { loadLibrary, getLibrary, hasLibrary, addToLibrary, clearLibrary } from './js/importers/library.js';
 
-const UI_KEY = 'tunebridge.ui.v1';
+const UI_KEY = 'tunebridge.ui.v2';
+const PENDING_KEY = 'tunebridge.pendingTransfer.v1';
+const SOURCE = 'import';
+const TRACK_PREVIEW_LIMIT = 100;
 const $ = (selector) => document.querySelector(selector);
 
 const state = {
-  source: null,
   destination: null,
-  kind: 'playlists',
-  items: { playlists: null, albums: null, artists: null },
-  loading: null,
-  loadError: null,
   selected: { playlists: new Map(), albums: new Map(), artists: new Map() },
-  filter: '',
+  known: new Set(),
+  expanded: new Set(),
   profiles: {},
   busy: {},
   transfer: null,
   demo: isDemoMode(),
+  link: { raw: '', info: null, status: 'idle', error: '', peek: null, progress: null, attempted: false },
+  notes: [],
 };
 
 const providers = new Map();
 const appConfig = getAppConfig();
 let toastTimer;
-let loadToken = 0;
+let linkController = null;
 
 // ---------------------------------------------------------------------------
 // Providers & persistence
@@ -48,32 +50,70 @@ function resetProviders() {
 }
 
 function persistUi() {
-  session.set(UI_KEY, { source: state.source, destination: state.destination, kind: state.kind });
+  session.set(UI_KEY, { destination: state.destination, deselected: deselectedIds(), expanded: [...state.expanded] });
 }
 
 function restoreUi() {
   const saved = session.get(UI_KEY, null);
   if (!saved) return;
-  if (SERVICES[saved.source]) state.source = saved.source;
-  if (SERVICES[saved.destination] && saved.destination !== state.source && !SERVICES[saved.destination].sourceOnly) state.destination = saved.destination;
-  if (KINDS.some((k) => k.id === saved.kind)) state.kind = saved.kind;
+  if (LOGIN_SERVICE_IDS.includes(saved.destination)) state.destination = saved.destination;
+  syncSelection(true);
+  for (const id of saved.deselected || []) for (const kind of KINDS) state.selected[kind.id].delete(id);
+  for (const id of saved.expanded || []) state.expanded.add(id);
 }
 
-function resetContent() {
-  state.items = { playlists: null, albums: null, artists: null };
-  state.selected = { playlists: new Map(), albums: new Map(), artists: new Map() };
-  state.loadError = null;
-  state.loading = null;
-  state.filter = '';
-  const filter = $('#picker-filter');
-  if (filter) filter.value = '';
+function linkCapabilities() {
+  return { resolverEnabled: Boolean(appConfig.resolverUrl), youtubeDirect: Boolean(getServiceConfig('youtube').apiKey) };
 }
 
-function resetTransfer() {
-  if (state.transfer?.running) state.transfer.controller.abort();
-  state.transfer = null;
-  $('#transfer-log').replaceChildren();
-  $('#progress-wrap').hidden = true;
+// ---------------------------------------------------------------------------
+// Library & selection
+// ---------------------------------------------------------------------------
+
+const stripTracks = ({ tracks, ...item }) => ({ ...item, trackCount: tracks?.length ?? item.trackCount ?? 0 });
+
+function libraryItems(kind) {
+  const library = getLibrary();
+  if (!library) return [];
+  return (library[kind] || []).map(stripTracks);
+}
+
+/** Newly imported items start selected; anything removed from the library is dropped. */
+function syncSelection(selectNew = true) {
+  for (const kind of KINDS) {
+    const items = libraryItems(kind.id);
+    const ids = new Set(items.map((item) => item.id));
+    for (const id of [...state.selected[kind.id].keys()]) if (!ids.has(id)) state.selected[kind.id].delete(id);
+    for (const item of items) {
+      if (state.selected[kind.id].has(item.id)) state.selected[kind.id].set(item.id, item);
+      else if (selectNew && !state.known.has(item.id)) state.selected[kind.id].set(item.id, item);
+      state.known.add(item.id);
+    }
+  }
+}
+
+function deselectedIds() {
+  const out = [];
+  for (const kind of KINDS) for (const item of libraryItems(kind.id)) if (!state.selected[kind.id].has(item.id)) out.push(item.id);
+  return out;
+}
+
+const totalItems = () => KINDS.reduce((sum, kind) => sum + libraryItems(kind.id).length, 0);
+const totalSelected = () => KINDS.reduce((sum, kind) => sum + state.selected[kind.id].size, 0);
+
+function sourcePlatform() {
+  const library = getLibrary();
+  const first = library?.playlists?.[0] || library?.albums?.[0] || library?.artists?.[0];
+  if (first?.platform && SERVICES[first.platform]) return first.platform;
+  const label = library?.sources?.[0] || '';
+  return LOGIN_SERVICE_IDS.find((id) => SERVICES[id].name === label || label.toLowerCase().startsWith(SERVICES[id].name.toLowerCase())) || null;
+}
+
+function sourceName() {
+  const platform = sourcePlatform();
+  if (platform) return SERVICES[platform].name;
+  const sources = getLibrary()?.sources || [];
+  return sources.length === 1 ? sources[0] : 'your file';
 }
 
 // ---------------------------------------------------------------------------
@@ -107,13 +147,15 @@ function closeDialog(dialog) {
 
 function brandVars(serviceId) {
   const service = SERVICES[serviceId];
+  if (!service) return '--brand:#8f9bff;--brand-2:#35e6ff;--ink:#0a0a0d';
   return `--brand:${service.color};--brand-2:${service.color2};--ink:${service.ink}`;
 }
 
 function applyAccent() {
   const root = document.documentElement;
-  const from = state.source ? SERVICES[state.source].color : '#35e6ff';
-  const to = state.destination ? SERVICES[state.destination].color : state.source ? SERVICES[state.source].color2 : '#a238ff';
+  const platform = sourcePlatform() || state.link.info?.platform;
+  const from = platform && SERVICES[platform] ? SERVICES[platform].color : '#8f9bff';
+  const to = state.destination ? SERVICES[state.destination].color : platform && SERVICES[platform] ? SERVICES[platform].color2 : '#35e6ff';
   root.style.setProperty('--from', from);
   root.style.setProperty('--to', to);
 }
@@ -125,295 +167,333 @@ function scrollToStep(id) {
   });
 }
 
-function capabilityNote(serviceId, role) {
-  const index = role === 'source' ? 0 : 1;
-  const supported = KINDS.filter((kind) => SERVICES[serviceId].caps[kind.id][index]).map((kind) => kind.label);
-  const unsupported = KINDS.filter((kind) => !SERVICES[serviceId].caps[kind.id][index]).map((kind) => kind.label.toLowerCase());
-  return { supported: supported.join(' · '), unsupported: unsupported.length ? `No ${unsupported.join(', ')}` : '' };
+function capabilityNote(serviceId) {
+  const unsupported = KINDS.filter((kind) => !SERVICES[serviceId].caps[kind.id][1]).map((kind) => kind.label.toLowerCase());
+  return unsupported.length ? `No ${unsupported.join(', ')}` : '';
 }
 
-function kindAvailable(kind) {
-  return Boolean(state.source && state.destination && canRead(state.source, kind) && canWrite(state.destination, kind));
-}
+const countLabel = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-function kindUnavailableReason(kind) {
-  const label = KINDS.find((k) => k.id === kind).label.toLowerCase();
-  if (state.source && !canRead(state.source, kind)) return `${SERVICES[state.source].name} does not expose ${label} through its API.`;
-  if (state.destination && !canWrite(state.destination, kind)) return `${SERVICES[state.destination].name} cannot save ${label} through its API.`;
-  return '';
+function totalDuration(tracks = []) {
+  const ms = tracks.reduce((sum, t) => sum + (t.durationMs || 0), 0);
+  if (!ms) return '';
+  const minutes = Math.round(ms / 60000);
+  return minutes >= 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min` : `${minutes} min`;
 }
-
-const totalSelected = () => KINDS.reduce((sum, kind) => sum + state.selected[kind.id].size, 0);
 
 // ---------------------------------------------------------------------------
 // Static rendering (runs once)
 // ---------------------------------------------------------------------------
 
 function renderStatic() {
-  $('#footer-year').textContent = String(new Date().getFullYear());
   const strip = $('#services-strip');
   strip.replaceChildren(...LOGIN_SERVICE_IDS.map((id) => el('li', { style: brandVars(id) }, svg(id, 18), SERVICES[id].name)));
-  $('#redirect-uri').textContent = getRedirectUri();
 
   const table = $('#caps-table');
   const head = el('tr', {}, el('th', { text: 'Service' }), ...KINDS.map((kind) => el('th', { text: kind.label })));
-  const rows = SERVICE_IDS.map((id) => el('tr', {}, el('td', {}, el('span', { style: `display:inline-flex;align-items:center;gap:8px;${brandVars(id)}` }, svg(id, 16), SERVICES[id].name)), ...KINDS.map((kind) => {
+  const rows = SERVICE_IDS.map((id) => el('tr', {}, el('td', {}, el('span', { style: `display:inline-flex;align-items:center;gap:8px;${brandVars(id)}` }, svg(id, 16), SERVICES[id].noLogin ? 'Pasted link / file (source)' : SERVICES[id].name)), ...KINDS.map((kind) => {
     const [read, write] = SERVICES[id].caps[kind.id];
-    if (read && write) return el('td', { class: 'yes', text: '✓ read & write' });
-    if (read) return el('td', { class: 'partial', text: 'read only' });
-    if (write) return el('td', { class: 'partial', text: 'write only' });
+    if (SERVICES[id].noLogin) return el('td', { class: read ? 'yes' : 'no', text: read ? '✓ source' : '—' });
+    if (write) return el('td', { class: 'yes', text: '✓ can receive' });
     return el('td', { class: 'no', text: '—' });
   })));
   table.replaceChildren(el('thead', {}, head), el('tbody', {}, ...rows));
 
   for (const link of document.querySelectorAll('.footer-copyright .footer-link')) link.href = appConfig.ownerUrl;
-  const handle = document.querySelector('.footer-copyright .footer-handle');
-  if (handle) handle.textContent = `@${appConfig.ownerName.replace(/^@/, '').toLowerCase()}`;
-  $('#demo-toggle').hidden = !appConfig.allowDemo;
-  $('#hero-demo-button').hidden = !appConfig.allowDemo;
+  $('#redirect-uri').textContent = getRedirectUri();
+  const setupLink = $('#setup-link');
+  if (setupLink) setupLink.href = appConfig.setupUrl;
 }
 
 // ---------------------------------------------------------------------------
-// Dynamic rendering
+// Rendering
 // ---------------------------------------------------------------------------
 
 function render() {
-  applyAccent();
-  renderRouteBar();
-  renderGrids();
+  renderLinkBar();
   renderSteps();
-  if (state.source && state.destination) renderConnect();
-  if (bothConnected()) {
-    renderTabs();
-    renderPicker();
-    renderTransferPanel();
-  }
-  $('#demo-toggle').setAttribute('aria-pressed', String(state.demo));
-  $('#route-demo-badge').hidden = !state.demo;
-}
-
-function renderRouteBar() {
-  const bar = $('#route-bar');
-  bar.hidden = !state.source;
-  if (!state.source) return;
-  const chip = (node, id, placeholder) => {
-    node.replaceChildren();
-    if (id) {
-      node.setAttribute('style', brandVars(id));
-      node.classList.remove('is-empty');
-      node.append(svg(id, 18), SERVICES[id].name);
-    } else {
-      node.removeAttribute('style');
-      node.classList.add('is-empty');
-      node.append(el('span', { class: 'route-placeholder', text: placeholder }));
-    }
-  };
-  chip($('#route-source'), state.source, 'Choose source');
-  chip($('#route-destination'), state.destination, 'Choose destination');
-}
-
-function renderGrids() {
-  const build = (role) => {
-    const selected = role === 'source' ? state.source : state.destination;
-    const other = role === 'source' ? state.destination : state.source;
-    return SERVICE_IDS.filter((id) => !(role === 'destination' && SERVICES[id].sourceOnly)).map((id) => {
-      const note = capabilityNote(id, role);
-      const isOther = id === other;
-      const button = el('button', {
-        type: 'button',
-        class: 'service-button',
-        style: brandVars(id),
-        'aria-pressed': String(selected === id),
-        disabled: isOther,
-        title: isOther ? `${SERVICES[id].name} is already the ${role === 'source' ? 'destination' : 'source'}` : `${role === 'source' ? 'Copy from' : 'Copy to'} ${SERVICES[id].name}`,
-        dataset: { service: id, role },
-      },
-      isOther ? el('span', { class: 'service-flag', text: role === 'source' ? 'Destination' : 'Source' }) : SERVICES[id].noLogin ? el('span', { class: 'service-flag no-login', text: 'No login' }) : null,
-      el('span', { class: 'service-logo' }, svg(id, 30)),
-      el('span', { class: 'service-name', text: SERVICES[id].name }),
-      el('span', { class: 'service-note', text: note.supported }),
-      note.unsupported ? el('span', { class: 'service-note unsupported', text: note.unsupported }) : null);
-      return button;
-    });
-  };
-  $('#source-grid').replaceChildren(...build('source'));
-  $('#destination-grid').replaceChildren(...build('destination'));
-}
-
-function bothConnected() {
-  return Boolean(state.source && state.destination && provider(state.source).isConnected() && provider(state.destination).isConnected());
+  renderPreview();
+  renderDestination();
+  applyAccent();
+  $('#demo-badge').hidden = !state.demo;
 }
 
 function renderSteps() {
-  const connected = bothConnected();
-  $('#step-destination').hidden = !state.source;
-  $('#step-connect').hidden = !(state.source && state.destination);
-  $('#step-content').hidden = !connected;
-  $('#step-transfer').hidden = !(connected && (totalSelected() > 0 || state.transfer));
+  const { status } = state.link;
+  $('#step-preview').hidden = !(hasLibrary() || status === 'loading' || status === 'error' || state.busy.import);
+  $('#step-destination').hidden = !hasLibrary();
+  $('#step-transfer').hidden = !state.transfer;
   $('#step-results').hidden = !state.transfer?.report;
 }
 
-function renderConnect() {
-  const grid = $('#connect-grid');
-  const cards = [
-    ['source', state.source],
-    ['destination', state.destination],
-  ].map(([role, id]) => {
-    const service = SERVICES[id];
-    if (service.noLogin) return renderImportCard(role);
+function renderLinkBar() {
+  const form = $('#link-form');
+  const { raw, info, status } = state.link;
+  const platform = info?.kind === 'link' ? info.platform : '';
+  form.dataset.platform = platform;
+  form.setAttribute('style', platform ? brandVars(platform) : '');
+  const icon = $('#link-icon');
+  if (platform) {
+    if (icon.dataset.platform !== platform) {
+      icon.replaceChildren(svg(platform, 22));
+      icon.dataset.platform = platform;
+    }
+  } else if (icon.dataset.platform !== '') {
+    icon.innerHTML = '<svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>';
+    icon.dataset.platform = '';
+  }
+  $('#link-clear').hidden = !raw;
+  const go = $('#link-go');
+  go.disabled = !raw || status === 'loading';
+  $('#link-go-label').textContent = status === 'loading' ? 'Reading…' : 'Preview';
+
+  const hint = $('#link-hint');
+  hint.className = 'link-hint';
+  if (!raw) {
+    hint.textContent = '';
+    return;
+  }
+  const problem = linkHint(info, linkCapabilities());
+  if (info?.kind === 'link' && !problem) {
+    hint.classList.add('is-ok');
+    const typeLabel = info.type === 'short' ? 'link' : info.type;
+    hint.replaceChildren(
+      el('span', { class: 'platform-pill', style: brandVars(platform) }, svg(platform, 14), `${PLATFORM_NAMES[platform]} ${typeLabel}`),
+      ' ',
+      status === 'loading' ? 'Reading it now…' : status === 'ready' ? 'Imported below.' : 'recognised — press Enter or Preview.');
+  } else if (problem) {
+    hint.classList.add(state.link.attempted || info?.kind === 'link' ? 'is-error' : '');
+    hint.textContent = problem;
+  } else hint.textContent = '';
+}
+
+function renderPreview() {
+  const container = $('#preview');
+  const { status, info, error, peek, progress } = state.link;
+  const library = getLibrary();
+  const platform = info?.platform;
+  const platformName = platform ? PLATFORM_NAMES[platform] : '';
+
+  if (status === 'loading' || state.busy.import) {
+    const box = el('div', { class: 'preview-state', style: brandVars(platform) }, el('span', { class: 'spinner' }));
+    box.append(el('strong', { text: status === 'loading' ? `Reading your ${platformName} ${info?.type === 'album' ? 'album' : 'playlist'}…` : 'Reading your files…' }));
+    if (progress?.count) box.append(el('span', { text: `${progress.count}${progress.total ? ` of ${progress.total}` : ''} songs so far` }));
+    if (peek?.title) box.append(peekCard(peek));
+    container.replaceChildren(box);
+    return;
+  }
+
+  if (status === 'error' && !hasLibrary()) {
+    const box = el('div', { class: 'preview-state is-error', style: brandVars(platform) });
+    if (peek?.title) box.append(el('span', { text: 'We found it, but can’t read its songs from here:' }), peekCard(peek));
+    box.append(el('strong', { text: error }));
+    box.append(el('div', { class: 'hint-actions' },
+      el('button', { type: 'button', class: 'ghost-button', text: 'What files work?', on: { click: () => openDialog($('#import-help-dialog')) } }),
+      el('button', { type: 'button', class: 'ghost-button', text: 'Choose a file', on: { click: () => $('#file-input').click() } })));
+    container.replaceChildren(box);
+    return;
+  }
+
+  if (!hasLibrary()) {
+    container.replaceChildren();
+    return;
+  }
+
+  const nodes = [];
+  if (status === 'error' && error) nodes.push(el('p', { class: 'preview-notes', text: error }));
+  const playlists = library.playlists || [];
+  const albums = library.albums || [];
+  const artists = library.artists || [];
+  const single = totalItems() === 1;
+
+  const toolbar = el('div', { class: 'preview-toolbar' },
+    el('span', { class: 'muted', text: `${summarizeImport(library)} · from ${(library.sources || []).join(', ') || 'your import'}` }),
+    el('span', {},
+      single ? null : el('button', { type: 'button', class: 'text-button', text: 'Select all', on: { click: () => selectAll(true) } }),
+      single ? null : el('button', { type: 'button', class: 'text-button', text: 'Select none', on: { click: () => selectAll(false) } }),
+      el('button', { type: 'button', class: 'text-button', text: 'Add a file', on: { click: () => $('#file-input').click() } }),
+      el('button', { type: 'button', class: 'text-button danger', text: 'Clear', on: { click: () => startOver() } })));
+  nodes.push(toolbar);
+  if (state.notes.length) nodes.push(el('ul', { class: 'preview-notes' }, ...state.notes.slice(0, 5).map((note) => el('li', { text: note }))));
+
+  if (single && playlists.length === 1) nodes.push(playlistCard(playlists[0], { hero: true }));
+  else if (single && albums.length === 1) nodes.push(albumCard(albums[0]));
+  else {
+    if (playlists.length) nodes.push(group('Playlists', playlists.length, playlists.map((playlist) => playlistRow(playlist))));
+    if (albums.length) nodes.push(group('Albums', albums.length, albums.map((album) => simpleRow('albums', album, album.title, `${album.artists?.join(', ') || ''}${album.year ? ' · ' + album.year : ''}`, album.image))));
+    if (artists.length) nodes.push(group('Artists', artists.length, artists.map((artist) => simpleRow('artists', artist, artist.name, 'Artist', artist.image))));
+  }
+  container.replaceChildren(...nodes);
+}
+
+function peekCard(peek) {
+  return el('div', { class: 'preview-peek' }, peek.image ? el('img', { src: peek.image, alt: '' }) : null, el('span', {}, el('strong', { text: peek.title }), peek.author ? el('div', { class: 'muted', text: `by ${peek.author}` }) : null));
+}
+
+function group(title, count, rows) {
+  return el('section', { class: 'preview-group' }, el('h3', { class: 'preview-group-title' }, title, el('span', { class: 'count', text: String(count) })), el('div', { class: 'item-list' }, ...rows));
+}
+
+function platformPill(item) {
+  const platform = item.platform && SERVICES[item.platform] ? item.platform : sourcePlatform();
+  if (platform) return el('span', { class: 'platform-pill', style: brandVars(platform) }, svg(platform, 14), `${SERVICES[platform].name} ${item.kindLabel || 'playlist'}`);
+  return el('span', { class: 'platform-pill' }, svg('import', 14), item.origin || 'Imported');
+}
+
+function coverNode(image, platform, size = 56) {
+  const cover = el('div', { class: 'cover' });
+  if (image) cover.append(el('img', { src: image, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer', on: { error: (event) => event.target.remove() } }));
+  else cover.append(svg(platform || 'import', size));
+  return cover;
+}
+
+/** Hidden input + drawn box, in the markup the .item styles expect (the row itself is the <label>). */
+function checkbox(kind, item) {
+  const input = el('input', { type: 'checkbox', checked: state.selected[kind].has(item.id), 'aria-label': `Include ${item.name || item.title}` });
+  input.addEventListener('change', () => toggleItem(kind, item, input.checked));
+  return [input, el('span', { class: 'checkbox', 'aria-hidden': 'true' })];
+}
+
+function playlistCard(playlist, { hero = false } = {}) {
+  const platform = playlist.platform && SERVICES[playlist.platform] ? playlist.platform : sourcePlatform();
+  const card = el('article', { class: 'playlist-card', style: brandVars(platform) });
+  card.append(coverNode(playlist.image, platform));
+  const tracks = playlist.tracks || [];
+  const meta = [`${countLabel(tracks.length, 'song')}`, totalDuration(tracks), playlist.owner ? `by ${playlist.owner}` : ''].filter(Boolean);
+  const main = el('div', { class: 'card-main' },
+    platformPill(playlist),
+    el('h3', { text: playlist.name }),
+    el('p', { class: 'card-meta', html: meta.map((part, index) => (index === 0 ? `<b>${escape(part)}</b>` : escape(part))).join(' · ') }),
+    playlist.description ? el('p', { class: 'card-meta', text: playlist.description.slice(0, 200) }) : null,
+    el('div', { class: 'card-actions' }, playlist.url ? el('a', { class: 'text-button', href: playlist.url, target: '_blank', rel: 'noreferrer', text: `Open on ${platform ? SERVICES[platform].name : 'source'} ↗` }) : null));
+  card.append(main);
+  if (!hero) card.append(el('label', { class: `item card-check${state.selected.playlists.has(playlist.id) ? ' is-selected' : ''}` }, ...checkbox('playlists', stripTracks(playlist))));
+  card.append(trackList(tracks, playlist.id));
+  return card;
+}
+
+function albumCard(album) {
+  const platform = album.platform && SERVICES[album.platform] ? album.platform : sourcePlatform();
+  const card = el('article', { class: 'playlist-card', style: brandVars(platform) });
+  card.append(coverNode(album.image, platform));
+  card.append(el('div', { class: 'card-main' },
+    platformPill({ ...album, kindLabel: 'album' }),
+    el('h3', { text: album.title }),
+    el('p', { class: 'card-meta', html: `<b>${escape(album.artists?.join(', ') || 'Unknown artist')}</b>${album.year ? ' · ' + escape(album.year) : ''}${album.trackCount ? ' · ' + countLabel(album.trackCount, 'song') : ''}` }),
+    el('p', { class: 'card-meta', text: 'The album will be saved to your library on the destination.' })));
+  if (album.tracks?.length) card.append(trackList(album.tracks, album.id));
+  return card;
+}
+
+function trackList(tracks, key) {
+  const list = el('ol', { class: 'track-list' });
+  const showAll = state.expanded.has(`all:${key}`);
+  const visible = showAll ? tracks : tracks.slice(0, TRACK_PREVIEW_LIMIT);
+  for (const [index, track] of visible.entries()) {
+    list.append(el('li', {},
+      el('span', { class: 'track-index', text: String(index + 1) }),
+      el('span', { class: 'track-text' }, el('span', { class: 'track-title', text: track.title }), el('span', { class: 'track-artist', text: [track.artists?.join(', '), track.album].filter(Boolean).join(' · ') || '—' })),
+      el('span', { class: 'track-time', text: track.durationMs ? formatDuration(track.durationMs) : '' })));
+  }
+  if (!tracks.length) list.append(el('li', {}, el('span'), el('span', { class: 'track-artist', text: 'No songs could be read for this item.' })));
+  if (tracks.length > visible.length) list.append(el('li', {}, el('span'), el('button', { type: 'button', class: 'text-button track-more', text: `Show all ${tracks.length} songs`, on: { click: () => { state.expanded.add(`all:${key}`); renderPreview(); } } })));
+  return list;
+}
+
+function playlistRow(playlist) {
+  const item = stripTracks(playlist);
+  const platform = playlist.platform && SERVICES[playlist.platform] ? playlist.platform : sourcePlatform();
+  const open = state.expanded.has(playlist.id);
+  const row = el('label', { class: `item${state.selected.playlists.has(item.id) ? ' is-selected' : ''}`, style: brandVars(platform) },
+    ...checkbox('playlists', item),
+    el('span', { class: 'item-cover' }, playlist.image ? el('img', { src: playlist.image, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }) : svg(platform || 'import', 22)),
+    el('span', { class: 'item-text' }, el('span', { class: 'item-title', text: playlist.name }), el('span', { class: 'item-meta', text: [countLabel(playlist.tracks?.length || 0, 'song'), playlist.owner].filter(Boolean).join(' · ') })),
+    el('button', { type: 'button', class: 'item-expand', text: open ? 'Hide songs' : 'Songs', 'aria-expanded': String(open), on: { click: () => { if (open) state.expanded.delete(playlist.id); else state.expanded.add(playlist.id); persistUi(); renderPreview(); } } }));
+  if (open) row.append(el('div', { class: 'item-tracks' }, trackList(playlist.tracks || [], playlist.id)));
+  return row;
+}
+
+function simpleRow(kind, item, title, meta, image) {
+  const platform = item.platform && SERVICES[item.platform] ? item.platform : sourcePlatform();
+  return el('label', { class: `item${state.selected[kind].has(item.id) ? ' is-selected' : ''}`, style: brandVars(platform) },
+    ...checkbox(kind, item),
+    el('span', { class: 'item-cover' }, image ? el('img', { src: image, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }) : svg(platform || 'import', 22)),
+    el('span', { class: 'item-text' }, el('span', { class: 'item-title', text: title }), el('span', { class: 'item-meta', text: meta })));
+}
+
+function escape(value) {
+  return String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function renderDestination() {
+  const grid = $('#destination-grid');
+  const sourceId = sourcePlatform();
+  grid.replaceChildren(...LOGIN_SERVICE_IDS.map((id) => {
     const instance = provider(id);
     const connected = instance.isConnected();
-    const profile = state.profiles[id];
-    const busy = state.busy[id];
-    const card = el('div', { class: 'connect-card', style: brandVars(id) });
-    card.append(el('div', { class: 'connect-card-head' },
-      el('span', { class: 'service-logo' }, svg(id, 24)),
-      el('div', {}, el('div', { class: 'connect-role', text: role === 'source' ? 'From' : 'To' }), el('div', { class: 'connect-name', text: service.name }))));
-
-    const status = el('div', { class: 'connect-status' });
-    if (connected) {
-      status.append(el('span', { class: 'dot on' }));
-      if (profile?.image) status.append(el('img', { src: profile.image, alt: '' }));
-      status.append(el('span', { text: profile ? `Connected as ${profile.name}` : 'Connected' }));
-    } else {
-      status.append(el('span', { class: 'dot' }), el('span', { text: busy ? `Opening ${service.name} sign-in…` : 'Not signed in yet' }));
-    }
-    card.append(status);
-
-    const actions = el('div', { class: 'connect-actions' });
-    if (connected) {
-      if (profile?.url) actions.append(el('a', { class: 'ghost-button', href: profile.url, target: '_blank', rel: 'noreferrer', text: `Open ${service.name}` }));
-      actions.append(el('button', { type: 'button', class: 'text-button', text: 'Disconnect', on: { click: () => disconnect(id) } }));
-    } else if (instance.isConfigured()) {
-      actions.append(el('button', { type: 'button', class: `gradient-button${service.ink === '#ffffff' ? ' light-ink' : ''}`, disabled: Boolean(busy), on: { click: () => connect(id) } }, svg(id, 18), busy ? 'Redirecting…' : `Log in with ${service.name}`));
-      actions.append(el('p', { class: 'connect-note', text: `Opens ${service.name}’s own login page, then brings you straight back here.` }));
-    } else {
-      // Not configured by the site owner: visitors never need keys, so say so plainly and
-      // keep the "bring your own developer app" escape hatch out of the way.
-      const hint = el('div', { class: 'connect-hint' });
-      hint.append(el('div', {}, el('strong', { text: `${service.name} login isn’t switched on for this site yet.` }), ` ${instance.missingConfigMessage()}`));
-      const hintActions = el('div', { class: 'hint-actions' });
-      if (appConfig.allowDemo && !state.demo) hintActions.append(el('button', { type: 'button', class: 'pill-button', text: 'Try with demo data', on: { click: () => toggleDemo(true) } }));
-      hintActions.append(el('a', { class: 'text-button', href: appConfig.setupUrl, target: '_blank', rel: 'noreferrer', text: 'Site owner? Setup guide ↗' }));
-      if (appConfig.allowUserKeys) hintActions.append(el('button', { type: 'button', class: 'text-button', text: 'Advanced: use my own developer app', on: { click: () => openSettings(id) } }));
-      hint.append(hintActions);
-      actions.append(hint);
-    }
-    card.append(actions);
-    return card;
-  });
-  grid.replaceChildren(...cards);
-  const importing = Boolean(state.source && SERVICES[state.source].noLogin);
-  $('#step-connect-title').textContent = importing ? `Import your music, then log in to ${SERVICES[state.destination]?.name || 'the destination'}` : 'Log in to both services';
-  $('#step-connect-copy').textContent = importing
-    ? 'No account needed on the source side: drop the file you exported (or paste a public link) and it stays in this browser. The destination still uses its own login page.'
-    : 'Each button opens that service’s own login page — the one you always use — and brings you straight back here. TuneBridge never sees your password; the sign-in tokens stay in this browser, because TuneBridge has no server.';
-}
-
-function renderTabs() {
-  const tabs = $('#kind-tabs');
-  tabs.replaceChildren(...KINDS.map((kind) => {
-    const available = kindAvailable(kind.id);
-    const count = state.selected[kind.id].size;
-    const tab = el('button', {
+    const note = capabilityNote(id);
+    const button = el('button', {
       type: 'button',
-      class: 'tab',
-      role: 'tab',
-      'aria-selected': String(state.kind === kind.id),
-      disabled: !available,
-      title: available ? '' : kindUnavailableReason(kind.id),
-      on: { click: () => selectKind(kind.id) },
-    }, kind.label, count ? el('span', { class: 'count', text: `(${count})` }) : null);
-    return tab;
+      class: 'service-button',
+      style: brandVars(id),
+      'aria-pressed': String(state.destination === id),
+      dataset: { service: id },
+    },
+    connected ? el('span', { class: 'service-flag ready', text: 'Logged in' }) : id === sourceId ? el('span', { class: 'service-flag', text: 'Same service' }) : null,
+    el('span', { class: 'service-logo' }, svg(id, 30)),
+    el('span', { class: 'service-name', text: SERVICES[id].name }),
+    el('span', { class: `service-note${note ? ' unsupported' : ''}`, text: note || 'Playlists · Albums · Artists' }));
+    return button;
   }));
-  const sourceName = SERVICES[state.source].name;
-  const destName = SERVICES[state.destination].name;
-  const unavailable = KINDS.filter((k) => !kindAvailable(k.id)).map((k) => k.label.toLowerCase());
-  $('#step-content-copy').textContent = `Everything you tick here will be rebuilt on ${destName}.${unavailable.length ? ` ${unavailable.join(' and ').replace(/^\w/, (c) => c.toUpperCase())} can’t move from ${sourceName} to ${destName} (API limitation).` : ''}`;
-}
 
-function renderPicker() {
-  const status = $('#picker-status');
-  const list = $('#item-list');
-  const items = state.items[state.kind];
-  if (!kindAvailable(state.kind)) {
-    status.hidden = false;
-    status.className = 'picker-status';
-    status.textContent = kindUnavailableReason(state.kind);
-    list.replaceChildren();
-    return;
-  }
-  if (state.loading === state.kind) {
-    status.hidden = false;
-    status.className = 'picker-status';
-    status.textContent = `Loading your ${state.kind} from ${SERVICES[state.source].name}…`;
-    list.replaceChildren();
-    return;
-  }
-  if (state.loadError && items == null) {
-    status.hidden = false;
-    status.className = 'picker-status error';
-    status.textContent = state.loadError;
-    list.replaceChildren();
-    return;
-  }
-  if (items == null) {
-    loadItems(state.kind);
-    return;
-  }
-  const query = state.filter.trim().toLowerCase();
-  const visible = items.filter((item) => !query || itemSearchText(item).includes(query));
-  status.hidden = visible.length > 0;
-  status.className = 'picker-status';
-  status.textContent = items.length ? 'Nothing matches your filter.' : `No ${state.kind} found on ${SERVICES[state.source].name}.`;
-  const selected = state.selected[state.kind];
-  list.replaceChildren(...visible.map((item) => renderItem(item, selected.has(item.id))));
-}
+  const panel = $('#destination-panel');
+  panel.hidden = !state.destination;
+  if (!state.destination) return;
+  const id = state.destination;
+  const destination = SERVICES[id];
+  const instance = provider(id);
+  const connected = instance.isConnected();
+  const configured = instance.isConfigured();
+  const running = Boolean(state.transfer?.running);
+  const profile = state.profiles[id];
 
-function itemSearchText(item) {
-  return `${item.name || item.title || ''} ${(item.artists || []).join(' ')} ${item.owner || ''}`.toLowerCase();
-}
-
-function renderItem(item, isSelected) {
-  const kind = state.kind;
-  const title = item.name || item.title || 'Untitled';
-  let meta = '';
-  if (kind === 'playlists') meta = [item.trackCount != null ? pluralize(item.trackCount, 'track') : item.special ? 'Your library' : '', item.owner && item.owner !== 'You' ? `by ${item.owner}` : ''].filter(Boolean).join(' · ');
-  if (kind === 'albums') meta = [(item.artists || []).join(', '), item.year, item.trackCount ? pluralize(item.trackCount, 'track') : ''].filter(Boolean).join(' · ');
-  if (kind === 'artists') meta = 'Artist';
-  const cover = el('span', { class: `item-cover${kind === 'artists' ? ' round' : ''}` });
-  if (item.image) cover.append(el('img', { src: item.image, alt: '', loading: 'lazy' }));
-  else cover.textContent = title.trim().charAt(0).toUpperCase() || '♪';
-  const label = el('label', { class: `item${isSelected ? ' is-selected' : ''}` },
-    el('input', { type: 'checkbox', checked: isSelected, on: { change: (event) => toggleItem(item, event.target.checked, label) } }),
-    el('span', { class: 'checkbox', 'aria-hidden': 'true' }),
-    cover,
-    el('span', { class: 'item-text' }, el('span', { class: 'item-title', text: title }), el('span', { class: 'item-meta', text: meta })),
-    item.special ? el('span', { class: 'item-tag', text: 'Library' }) : item.isPublic === false && kind === 'playlists' ? el('span', { class: 'item-tag', text: 'Private' }) : null);
-  return label;
-}
-
-function renderTransferPanel() {
   const summary = $('#transfer-summary');
-  const chips = KINDS.filter((kind) => state.selected[kind.id].size).map((kind) => el('span', { class: 'summary-chip' }, el('strong', { text: String(state.selected[kind.id].size) }), kind.label.toLowerCase()));
-  const trackEstimate = Array.from(state.selected.playlists.values()).reduce((sum, p) => sum + (p.trackCount || 0), 0);
-  if (trackEstimate) chips.push(el('span', { class: 'summary-chip' }, el('strong', { text: `≈${trackEstimate}` }), 'tracks to match'));
-  if (!chips.length) chips.push(el('span', { class: 'summary-chip', text: 'Nothing selected yet' }));
-  summary.replaceChildren(el('span', { class: 'summary-chip', style: brandVars(state.source) }, svg(state.source, 16), SERVICES[state.source].name, '→', svg(state.destination, 16), SERVICES[state.destination].name), ...chips);
-  $('#option-suffix-source').textContent = SERVICES[state.source].name;
+  const chips = [];
+  const route = el('span', { class: 'summary-chip', style: brandVars(sourceId || 'import') }, svg(sourceId || 'import', 16), sourceName(), '→', svg(id, 16), destination.name);
+  chips.push(route);
+  for (const kind of KINDS) {
+    const count = state.selected[kind.id].size;
+    if (!count) continue;
+    if (!canWrite(id, kind.id)) chips.push(el('span', { class: 'summary-chip', style: 'border-color:rgba(255,196,0,.5);color:#ffd866', text: `${count} ${kind.label.toLowerCase()} skipped — ${destination.name} can’t receive ${kind.label.toLowerCase()}` }));
+    else chips.push(el('span', { class: 'summary-chip' }, el('strong', { text: String(count) }), count === 1 ? kind.label.toLowerCase().replace(/s$/, '') : kind.label.toLowerCase()));
+  }
+  const trackEstimate = [...state.selected.playlists.values()].reduce((sum, p) => sum + (p.trackCount || 0), 0);
+  if (trackEstimate && canWrite(id, 'playlists')) chips.push(el('span', { class: 'summary-chip' }, el('strong', { text: String(trackEstimate) }), 'songs to match'));
+  if (!totalSelected()) chips.push(el('span', { class: 'summary-chip', text: 'Nothing selected — tick something above' }));
+  if (id === 'youtube' && trackEstimate > 60 && !running) chips.push(el('span', { class: 'summary-chip', style: 'border-color:rgba(255,196,0,.5);color:#ffd866', text: `YouTube’s default API quota fits about 60 new songs per day — ${trackEstimate} may take several days.` }));
+  const status = el('div', { class: 'destination-status' });
+  if (connected) {
+    status.append(el('span', { class: 'dot on' }));
+    if (profile?.image) status.append(el('img', { src: profile.image, alt: '', referrerpolicy: 'no-referrer' }));
+    status.append(el('span', {}, `Logged in to ${destination.name}`, profile?.name ? ` as ${profile.name}` : ''), el('button', { type: 'button', class: 'text-button', text: 'Not you? Sign out', on: { click: () => disconnect(id) } }));
+  } else {
+    status.append(el('span', { class: 'dot' }), el('span', { text: `Not logged in to ${destination.name} yet` }));
+  }
+  summary.replaceChildren(status, ...chips);
+  $('#option-suffix-source').textContent = sourceName();
 
   const button = $('#transfer-button');
-  const running = Boolean(state.transfer?.running);
-  const destination = SERVICES[state.destination];
-  const ink = SERVICES[state.source].ink === '#ffffff' && destination.ink === '#ffffff';
-  button.classList.toggle('light-ink', ink);
-  button.disabled = running || totalSelected() === 0;
-  button.replaceChildren(el('span', { class: 'service-inline' }, running ? 'Transferring…' : `Transfer to ${destination.name}`, running ? null : svg(state.destination, 20)));
+  const nothing = totalSelected() === 0 || !KINDS.some((kind) => state.selected[kind.id].size && canWrite(id, kind.id));
+  button.classList.toggle('light-ink', destination.ink === '#ffffff');
+  button.classList.toggle('login', !connected);
+  button.disabled = running || nothing || (!configured && !state.demo);
+  button.replaceChildren(el('span', { class: 'service-inline' }, running ? 'Transferring…' : connected ? `Transfer to ${destination.name}` : `Log in with ${destination.name} & transfer`, running ? null : svg(id, 20)));
   $('#cancel-button').hidden = !running;
-  if (state.destination === 'youtube' && trackEstimate > 60 && !running) {
-    const warn = el('span', { class: 'summary-chip', style: 'border-color:rgba(255,196,0,.5);color:#ffd866', text: `YouTube’s default API quota fits about 60 new tracks per day — ${trackEstimate} may take several days.` });
-    summary.append(warn);
-  }
+  const note = $('#cta-note');
+  if (!configured && !state.demo) note.innerHTML = `Transfers to <b>${destination.name}</b> aren’t switched on for this site yet — pick another destination for now.`;
+  else if (running) note.textContent = '';
+  else if (connected) note.innerHTML = `New playlists are created in <b>your ${destination.name} account</b>; nothing is deleted or changed there.`;
+  else note.innerHTML = `<b>${destination.name}</b> opens its own sign-in page (the one you always use) and sends you straight back — the transfer then starts by itself. TuneBridge never sees your password.`;
 }
 
 function renderResults() {
@@ -428,21 +508,21 @@ function renderResults() {
       ? `The transfer stopped early: ${report.error}`
       : stats.missing === 0
         ? `Everything made it to ${destination.name}.`
-        : `${stats.missing} ${stats.missing === 1 ? 'item' : 'items'} couldn’t be found on ${destination.name} — details below.`;
+        : `${stats.missing} ${stats.missing === 1 ? 'song' : 'songs'} couldn’t be found on ${destination.name} — details below.`;
   $('#results-copy').textContent = copy;
   $('#step-results-title').textContent = report.cancelled ? 'Cancelled' : report.error ? 'Stopped' : 'All done';
 
   const statBoxes = el('div', { class: 'results-stats' },
-    el('div', { class: 'stat' }, el('strong', { text: String(stats.items) }), el('span', { text: 'items processed' })),
-    el('div', { class: 'stat' }, el('strong', { text: `${stats.tracksMatched}/${stats.tracksTotal}` }), el('span', { text: 'tracks matched' })),
+    el('div', { class: 'stat' }, el('strong', { text: String(stats.items) }), el('span', { text: stats.items === 1 ? 'item processed' : 'items processed' })),
+    el('div', { class: 'stat' }, el('strong', { text: `${stats.tracksMatched}/${stats.tracksTotal}` }), el('span', { text: 'songs matched' })),
     el('div', { class: 'stat' }, el('strong', { text: String(stats.missing) }), el('span', { text: 'not found' })),
     el('div', { class: 'stat' }, el('strong', { text: `${Math.max(1, Math.round((report.finishedAt - report.startedAt) / 1000))}s` }), el('span', { text: 'elapsed' })));
 
   const items = report.items.map((item) => {
     const cls = item.status === 'done' ? (item.missing.length + item.failed.length ? 'partial' : 'done') : item.status;
     const icon = cls === 'done' ? '✓' : cls === 'partial' ? '!' : '×';
-    const sub = item.kind === 'playlist' ? `${item.matched} of ${item.total} tracks` : item.message;
-    const details = el('details', { class: `result-item ${cls}` });
+    const sub = item.kind === 'playlist' ? `${item.matched} of ${item.total} songs` : item.message;
+    const details = el('details', { class: `result-item ${cls}`, open: cls !== 'done' });
     const summaryNode = el('summary', {}, el('span', { class: 'log-icon', text: icon }), el('span', { class: 'result-title' }, item.name, ' ', el('span', { class: 'result-sub', text: `· ${sub}` })));
     if (item.url) summaryNode.append(el('a', { class: 'result-link', href: item.url, target: '_blank', rel: 'noreferrer', text: `Open on ${destination.name} ↗`, on: { click: (event) => event.stopPropagation() } }));
     details.append(summaryNode);
@@ -450,7 +530,7 @@ function renderResults() {
     for (const track of item.missing) missing.append(el('li', {}, el('strong', { text: track.title || track.name || '' }), el('span', { text: (track.artists || []).join(', ') }), el('em', { text: 'not found' })));
     for (const { track, error } of item.failed) missing.append(el('li', {}, el('strong', { text: track.title || track.name || '' }), el('span', { text: (track.artists || []).join(', ') }), el('em', { text: error })));
     if (item.error && !item.failed.length) missing.append(el('li', {}, el('em', { text: item.error })));
-    if (!missing.childElementCount) missing.append(el('li', {}, el('span', { text: item.kind === 'playlist' ? 'Every track was found.' : item.message })));
+    if (!missing.childElementCount) missing.append(el('li', {}, el('span', { text: item.kind === 'playlist' ? 'Every song was found.' : item.message })));
     details.append(missing);
     return details;
   });
@@ -459,110 +539,97 @@ function renderResults() {
 }
 
 // ---------------------------------------------------------------------------
-// Actions
+// Link & file import
 // ---------------------------------------------------------------------------
 
-function selectService(role, id) {
-  if (role === 'source') {
-    if (state.source === id) return;
-    state.source = id;
-    if (state.destination === id) state.destination = null;
-    resetContent();
-    resetTransfer();
-    persistUi();
+function onLinkInput() {
+  const raw = $('#link-input').value;
+  if (raw === state.link.raw) return;
+  state.link.raw = raw;
+  state.link.info = classifyLink(raw);
+  state.link.attempted = false;
+  if (state.link.status === 'error' || state.link.status === 'ready') { state.link.status = 'idle'; state.link.error = ''; state.link.peek = null; }
+  renderLinkBar();
+  applyAccent();
+  renderSteps();
+}
+
+async function previewLink() {
+  const input = $('#link-input');
+  onLinkInput();
+  const info = state.link.info;
+  state.link.attempted = true;
+  if (!info || info.kind === 'empty') { input.focus(); renderLinkBar(); return; }
+  const problem = linkHint(info, linkCapabilities());
+  linkController?.abort();
+  const controller = new AbortController();
+  linkController = controller;
+  state.link.error = '';
+  state.link.peek = null;
+  state.link.progress = null;
+  if (problem) {
+    state.link.status = 'error';
+    state.link.error = problem;
     render();
-    scrollToStep(state.destination ? 'step-connect' : 'step-destination');
-  } else {
-    if (state.destination === id) return;
-    state.destination = id;
-    for (const kind of KINDS) if (!kindAvailable(kind.id)) state.selected[kind.id].clear();
-    if (!kindAvailable(state.kind)) state.kind = KINDS.find((kind) => kindAvailable(kind.id))?.id || 'playlists';
-    resetTransfer();
-    persistUi();
-    render();
-    scrollToStep(bothConnected() ? 'step-content' : 'step-connect');
-  }
-}
-
-// ---------------------------------------------------------------------------
-// File / link import (no-login source)
-// ---------------------------------------------------------------------------
-
-const IMPORT_ACCEPT = '.zip,.json,.csv,.tsv,.txt,.xml,.m3u,.m3u8,application/zip,application/json,text/csv,text/plain,text/xml';
-
-function renderImportCard(role) {
-  const id = 'import';
-  const service = SERVICES[id];
-  const library = getLibrary();
-  const connected = provider(id).isConnected();
-  const busy = state.busy[id];
-  const card = el('div', { class: 'connect-card import-card', style: brandVars(id) });
-  card.append(el('div', { class: 'connect-card-head' },
-    el('span', { class: 'service-logo' }, svg(id, 24)),
-    el('div', {}, el('div', { class: 'connect-role', text: role === 'source' ? 'From' : 'To' }), el('div', { class: 'connect-name', text: service.name }))));
-
-  const status = el('div', { class: 'connect-status' });
-  if (connected) status.append(el('span', { class: 'dot on' }), el('span', { text: `Imported: ${summarizeImport(library)}` }));
-  else status.append(el('span', { class: 'dot' }), el('span', { text: busy ? 'Reading…' : 'Nothing imported yet' }));
-  card.append(status);
-
-  const input = el('input', { type: 'file', multiple: true, accept: IMPORT_ACCEPT, hidden: true, id: 'import-file-input', on: { change: (event) => { handleImportFiles(event.target.files); event.target.value = ''; } } });
-  const drop = el('label', { class: `drop-zone${busy ? ' is-busy' : ''}`, for: 'import-file-input', tabindex: '0', role: 'button', 'aria-label': 'Choose files to import' },
-    el('span', { class: 'drop-icon', html: logoSvg('import', { size: 28 }) }),
-    el('strong', { text: busy ? 'Reading your files…' : connected ? 'Add more files' : 'Drop files here or click to choose' }),
-    el('span', { class: 'drop-hint', text: 'Spotify data export (ZIP), Google Takeout, Apple Music playlist (XML / TXT), CSV, M3U, or a plain “Artist – Title” list' }),
-    input);
-  drop.addEventListener('dragover', (event) => { event.preventDefault(); drop.classList.add('is-over'); });
-  drop.addEventListener('dragleave', () => drop.classList.remove('is-over'));
-  drop.addEventListener('drop', (event) => { event.preventDefault(); drop.classList.remove('is-over'); handleImportFiles(event.dataTransfer?.files); });
-  drop.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); input.click(); } });
-  card.append(drop);
-
-  const linkInput = el('input', { type: 'url', class: 'link-input', placeholder: 'or paste a public Deezer playlist / album link…', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Public playlist link' });
-  const fetchButton = el('button', { type: 'button', class: 'pill-button', text: 'Fetch', disabled: Boolean(busy), on: { click: () => handleImportLink(linkInput.value) } });
-  linkInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); handleImportLink(linkInput.value); } });
-  card.append(el('div', { class: 'link-row' }, linkInput, fetchButton));
-
-  if (state.importNotes?.length) {
-    card.append(el('ul', { class: 'import-notes' }, ...state.importNotes.slice(0, 6).map((note) => el('li', { text: note }))));
-  }
-
-  const actions = el('div', { class: 'connect-actions' });
-  actions.append(el('button', { type: 'button', class: 'text-button', text: 'Where do I get these files?', on: { click: () => openDialog($('#import-help-dialog')) } }));
-  if (connected) actions.append(el('button', { type: 'button', class: 'text-button danger', text: 'Clear imported music', on: { click: () => disconnect(id) } }));
-  card.append(actions);
-  return card;
-}
-
-async function handleImportFiles(fileList) {
-  const files = Array.from(fileList || []);
-  if (!files.length) return;
-  await runImport(() => importFiles(files), files.length === 1 ? files[0].name : `${files.length} files`);
-}
-
-async function handleImportLink(value) {
-  const link = classifyLink(value);
-  if (link.kind === 'empty') return;
-  if (link.kind !== 'deezer') {
-    toast(LINK_HINTS[link.kind] || LINK_HINTS.unknown, 'error', 9000);
+    scrollToStep('step-preview');
+    if (info.kind === 'link') peekLink(info, { signal: controller.signal }).then((peek) => { if (!controller.signal.aborted && peek) { state.link.peek = peek; renderPreview(); } });
     return;
   }
-  await runImport(() => importDeezerLink(link), 'Deezer link');
+  state.link.status = 'loading';
+  state.notes = [];
+  render();
+  scrollToStep('step-preview');
+  peekLink(info, { signal: controller.signal }).then((peek) => { if (!controller.signal.aborted && peek && state.link.status === 'loading') { state.link.peek = peek; renderPreview(); } });
+  try {
+    const result = await importLink(info, {
+      signal: controller.signal,
+      config: { resolverUrl: appConfig.resolverUrl, youtubeApiKey: getServiceConfig('youtube').apiKey || '' },
+      onProgress: (count, total) => { state.link.progress = { count, total }; renderPreview(); },
+    });
+    if (controller.signal.aborted) return;
+    await clearLibrary(); // a pasted link replaces whatever was there: one playlist at a time
+    await addToLibrary(result, PLATFORM_NAMES[info.platform]);
+    state.known.clear();
+    for (const kind of KINDS) state.selected[kind.id].clear();
+    state.expanded.clear();
+    syncSelection(true);
+    state.notes = result.notes || [];
+    state.link.status = 'ready';
+    delete state.profiles[SOURCE];
+    providers.delete(SOURCE);
+    resetTransfer();
+    persistUi();
+    render();
+    toast(`Found ${summarizeImport(result)}.`, 'success');
+    scrollToStep('step-preview');
+  } catch (error) {
+    if (isAbortError(error) || controller.signal.aborted) return;
+    state.link.status = 'error';
+    state.link.error = error.message || 'Could not read that link.';
+    render();
+  }
 }
 
-async function runImport(task, label) {
+async function handleFiles(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
   state.busy.import = true;
-  state.importNotes = [];
+  state.link.status = 'idle';
   render();
+  scrollToStep('step-preview');
+  const label = files.length === 1 ? files[0].name : `${files.length} files`;
   try {
-    const result = await task();
+    const result = await importFiles(files);
     const count = result.playlists.length + result.albums.length + result.artists.length;
     const origins = [...new Set(result.playlists.map((p) => p.origin).filter(Boolean))];
-    if (count) await addToLibrary(result, origins.length === 1 ? origins[0] : label.replace(/\.[^.]+$/, ''));
-    state.importNotes = result.notes;
-    delete state.profiles.import;
-    resetContent();
-    resetTransfer();
+    if (count) {
+      await addToLibrary(result, origins.length === 1 ? origins[0] : label.replace(/\.[^.]+$/, ''));
+      syncSelection(true);
+      resetTransfer();
+      persistUi();
+    }
+    state.notes = result.notes || [];
+    providers.delete(SOURCE);
     if (count) toast(`Imported ${summarizeImport(result)} from ${label}.`, 'success');
     else toast(result.notes[0] || `Nothing usable found in ${label}.`, 'error', 9000);
   } catch (error) {
@@ -570,35 +637,105 @@ async function runImport(task, label) {
   } finally {
     state.busy.import = false;
     render();
-    if (bothConnected()) { await loadProfile('import'); render(); scrollToStep('step-content'); }
+    scrollToStep('step-preview');
   }
 }
 
-async function connect(id) {
+function toggleItem(kind, item, checked) {
+  if (checked) state.selected[kind].set(item.id, item);
+  else state.selected[kind].delete(item.id);
+  persistUi();
+  renderPreview();
+  renderDestination();
+}
+
+function selectAll(value) {
+  for (const kind of KINDS) {
+    for (const item of libraryItems(kind.id)) {
+      if (value) state.selected[kind.id].set(item.id, item);
+      else state.selected[kind.id].delete(item.id);
+    }
+  }
+  persistUi();
+  renderPreview();
+  renderDestination();
+}
+
+async function startOver() {
+  linkController?.abort();
+  resetTransfer();
+  await clearLibrary();
+  for (const kind of KINDS) state.selected[kind.id].clear();
+  state.known.clear();
+  state.expanded.clear();
+  state.notes = [];
+  state.link = { raw: '', info: null, status: 'idle', error: '', peek: null, progress: null, attempted: false };
+  $('#link-input').value = '';
+  providers.delete(SOURCE);
+  delete state.profiles[SOURCE];
+  persistUi();
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  $('#link-input').focus();
+}
+
+// ---------------------------------------------------------------------------
+// Destination: pick, log in, transfer
+// ---------------------------------------------------------------------------
+
+function selectDestination(id) {
+  if (!LOGIN_SERVICE_IDS.includes(id)) return;
+  if (state.transfer?.running) { toast('Wait for the current transfer to finish (or cancel it) first.', 'error'); return; }
+  state.destination = id;
+  resetTransfer();
+  persistUi();
+  render();
+  loadProfile(id).then(() => renderDestination());
+  scrollToStep('destination-panel');
+}
+
+function readOptions() {
+  return { publicPlaylists: $('#option-public').checked, suffix: $('#option-suffix').checked };
+}
+
+function savePendingTransfer(id) {
+  session.set(PENDING_KEY, { destination: id, options: readOptions(), deselected: deselectedIds(), at: Date.now() });
+}
+
+async function primaryAction() {
+  const id = state.destination;
+  if (!id || state.transfer?.running) return;
   const instance = provider(id);
-  if (!instance.isConfigured()) {
-    openSettings(id);
+  if (instance.isConnected()) {
+    await startTransfer();
     return;
   }
+  if (!instance.isConfigured()) {
+    toast(`Transfers to ${SERVICES[id].name} aren’t switched on for this site yet.`, 'error');
+    return;
+  }
+  savePendingTransfer(id);
   state.busy[id] = true;
-  render();
+  renderDestination();
   try {
-    await instance.connect(); // redirect-based providers never resolve here (page navigates away)
+    await instance.connect(); // redirect-based logins navigate away here and come back through boot()
+    session.remove(PENDING_KEY);
     await loadProfile(id);
-    toast(`Connected to ${SERVICES[id].name}.`, 'success');
-  } catch (error) {
-    toast(error.message || `Could not connect to ${SERVICES[id].name}.`, 'error');
-  } finally {
     state.busy[id] = false;
     render();
-    if (bothConnected()) scrollToStep('step-content');
+    toast(`Logged in to ${SERVICES[id].name}.`, 'success');
+    await startTransfer();
+  } catch (error) {
+    session.remove(PENDING_KEY);
+    state.busy[id] = false;
+    toast(error.message || `Could not log in to ${SERVICES[id].name}.`, 'error');
+    render();
   }
 }
 
 function disconnect(id) {
   provider(id).disconnect();
   delete state.profiles[id];
-  resetContent();
   resetTransfer();
   render();
 }
@@ -620,107 +757,58 @@ async function loadProfile(id) {
 }
 
 async function handleRedirect(result) {
-  if (!result) return;
+  if (!result) return false;
   if (result.error && !result.provider) {
     toast(result.error, 'error');
-    return;
+    return false;
   }
   const id = result.provider;
   if (result.error) {
     toast(`${SERVICES[id]?.name || 'Sign-in'}: ${result.error}`, 'error');
-    return;
+    return false;
   }
   try {
     await provider(id).finishConnect(result);
     await loadProfile(id);
-    toast(`Connected to ${SERVICES[id].name}.`, 'success');
+    toast(`Logged in to ${SERVICES[id].name}.`, 'success');
+    return true;
   } catch (error) {
     toast(`${SERVICES[id]?.name || 'Sign-in'}: ${error.message}`, 'error');
+    return false;
   }
 }
 
-function selectKind(kind) {
-  if (!kindAvailable(kind)) return;
-  state.kind = kind;
-  persistUi();
-  render();
-}
-
-async function loadItems(kind) {
-  const token = ++loadToken;
-  const source = provider(state.source);
-  state.loading = kind;
-  state.loadError = null;
-  renderPicker();
-  try {
-    const items = kind === 'playlists' ? await source.listPlaylists() : kind === 'albums' ? await source.listAlbums() : await source.listArtists();
-    state.items[kind] = items;
-    if (token !== loadToken) return;
-  } catch (error) {
-    if (token !== loadToken) return;
-    state.loadError = error.name === 'AuthError' ? error.message : `Could not load ${kind} from ${SERVICES[state.source].name}: ${error.message}`;
-    if (error.name === 'AuthError') {
-      delete state.profiles[state.source];
-      render();
-      return;
-    }
-  } finally {
-    if (token === loadToken) state.loading = null;
-  }
-  render();
-}
-
-function toggleItem(item, checked, node) {
-  const selected = state.selected[state.kind];
-  if (checked) selected.set(item.id, item);
-  else selected.delete(item.id);
-  node.classList.toggle('is-selected', checked);
-  renderTabs();
-  renderSteps();
-  renderTransferPanel();
-}
-
-function selectAll(value) {
-  const items = state.items[state.kind] || [];
-  const query = state.filter.trim().toLowerCase();
-  const selected = state.selected[state.kind];
-  for (const item of items) {
-    if (query && !itemSearchText(item).includes(query)) continue;
-    if (value) selected.set(item.id, item);
-    else selected.delete(item.id);
-  }
-  render();
+function resetTransfer() {
+  if (state.transfer?.running) state.transfer.controller.abort();
+  state.transfer = null;
+  $('#transfer-log').replaceChildren();
+  $('#progress-wrap').hidden = true;
 }
 
 async function startTransfer() {
-  if (state.transfer?.running) return;
-  const source = provider(state.source);
+  if (state.transfer?.running || !state.destination) return;
+  const source = provider(SOURCE);
   const destination = provider(state.destination);
-  const selection = { playlists: [...state.selected.playlists.values()], albums: [...state.selected.albums.values()], artists: [...state.selected.artists.values()] };
+  const selection = Object.fromEntries(KINDS.map((kind) => [kind.id, canWrite(state.destination, kind.id) ? [...state.selected[kind.id].values()] : []]));
+  if (!Object.values(selection).some((list) => list.length)) { toast('Nothing to transfer — tick at least one item.', 'error'); return; }
   const controller = new AbortController();
   const entries = new Map();
   state.transfer = { controller, running: true, report: null, entries };
-  const log = $('#transfer-log');
-  log.replaceChildren();
+  $('#transfer-log').replaceChildren();
   $('#progress-wrap').hidden = false;
   $('#progress-fill').style.width = '0%';
   $('#progress-label').textContent = 'Starting…';
   $('#progress-count').textContent = '';
-  $('#step-results').hidden = true;
   render();
   scrollToStep('step-transfer');
 
-  const sourceName = SERVICES[state.source].name;
-  const options = {
-    publicPlaylists: $('#option-public').checked,
-    renamePlaylist: $('#option-suffix').checked ? (playlist) => `${playlist.name} (from ${sourceName})` : null,
-  };
-
+  const { publicPlaylists, suffix } = readOptions();
+  const from = sourceName();
   const report = await runTransfer({
     source,
     destination,
     selection,
-    options,
+    options: { publicPlaylists, renamePlaylist: suffix ? (playlist) => `${playlist.name} (from ${from})` : null },
     signal: controller.signal,
     onEvent: (event) => handleTransferEvent(event, entries),
   });
@@ -736,7 +824,7 @@ async function startTransfer() {
   const stats = summarize(report);
   if (report.cancelled) toast('Transfer cancelled.');
   else if (report.error) toast(report.error, 'error');
-  else toast(`Done — ${stats.tracksMatched} of ${stats.tracksTotal} tracks matched.`, stats.missing ? '' : 'success');
+  else toast(`Done — ${stats.tracksMatched} of ${stats.tracksTotal} songs matched.`, stats.missing ? '' : 'success');
 }
 
 function handleTransferEvent(event, entries) {
@@ -773,9 +861,7 @@ function handleTransferEvent(event, entries) {
 function cancelTransfer() {
   state.transfer?.controller.abort();
   $('#cancel-button').disabled = true;
-  setTimeout(() => {
-    $('#cancel-button').disabled = false;
-  }, 1500);
+  setTimeout(() => { $('#cancel-button').disabled = false; }, 1500);
 }
 
 function downloadMissing() {
@@ -784,7 +870,7 @@ function downloadMissing() {
   const csv = missingAsCsv(report);
   const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
-  const link = el('a', { href: url, download: `tunebridge-missing-${state.source}-to-${state.destination}.csv` });
+  const link = el('a', { href: url, download: `tunebridge-missing-${state.destination}.csv` });
   document.body.append(link);
   link.click();
   link.remove();
@@ -794,29 +880,24 @@ function downloadMissing() {
 function toggleDemo(force) {
   const next = typeof force === 'boolean' ? force : !state.demo;
   if (next === state.demo) return;
-  if (state.transfer?.running) {
-    toast('Wait for the current transfer to finish (or cancel it) before switching modes.', 'error');
-    return;
-  }
+  if (state.transfer?.running) return;
   state.demo = next;
   setDemoMode(next);
   resetProviders();
-  resetContent();
   resetTransfer();
   render();
-  toast(next ? 'Demo mode on — sample libraries, nothing touches your real accounts.' : 'Demo mode off — back to real services.');
-  if (next && !state.source) scrollToStep('step-source');
+  toast(next ? 'Demo mode: the destination is a sample account — nothing touches real services.' : 'Demo mode off.');
 }
 
 // ---------------------------------------------------------------------------
-// Settings dialog
+// Site-owner settings (hidden: #setup or About → "Site owner settings")
 // ---------------------------------------------------------------------------
 
 function openSettings(focusService) {
   const container = $('#settings-services');
   const user = getUserSettings();
   const baseConfig = (window.TUNEBRIDGE_CONFIG || {});
-  container.replaceChildren(...SERVICE_IDS.filter((id) => SERVICES[id].credentials.length).map((id) => {
+  container.replaceChildren(...LOGIN_SERVICE_IDS.filter((id) => SERVICES[id].credentials.length).map((id) => {
     const service = SERVICES[id];
     const base = baseConfig[id] || {};
     const effective = getServiceConfig(id);
@@ -826,7 +907,7 @@ function openSettings(focusService) {
     section.append(el('p', { html: `${service.setup} <a href="${service.developer}" target="_blank" rel="noreferrer">Open developer portal ↗</a>` }));
     for (const credential of service.credentials) {
       const value = user[id]?.[credential.key] || '';
-      const fromConfig = base[credential.key] ? 'Pre-filled by the site owner — leave empty to keep it.' : '';
+      const fromConfig = base[credential.key] ? 'Pre-filled by config.js — leave empty to keep it.' : '';
       const input = credential.multiline
         ? el('textarea', { name: `${id}.${credential.key}`, placeholder: credential.placeholder || '', spellcheck: 'false' })
         : el('input', { name: `${id}.${credential.key}`, type: credential.secret ? 'password' : 'text', placeholder: credential.placeholder || '', autocomplete: 'off', spellcheck: 'false' });
@@ -861,9 +942,8 @@ function saveSettings(event) {
 
 function forgetTokens() {
   tokens.clearAll();
-  for (const instance of providers.values()) instance.disconnect?.();
+  for (const [id, instance] of providers) if (id !== SOURCE) instance.disconnect?.();
   state.profiles = {};
-  resetContent();
   resetTransfer();
   closeDialog($('#settings-dialog'));
   render();
@@ -875,23 +955,44 @@ function forgetTokens() {
 // ---------------------------------------------------------------------------
 
 function bindEvents() {
+  const input = $('#link-input');
+  input.addEventListener('input', onLinkInput);
+  input.addEventListener('paste', () => setTimeout(() => {
+    onLinkInput();
+    if (state.link.info?.kind === 'link' && !linkHint(state.link.info, linkCapabilities())) previewLink();
+    else if (state.link.info?.kind === 'link') { state.link.attempted = true; renderLinkBar(); }
+  }, 0));
+  $('#link-form').addEventListener('submit', (event) => { event.preventDefault(); previewLink(); });
+  $('#link-clear').addEventListener('click', () => { input.value = ''; onLinkInput(); linkController?.abort(); if (state.link.status === 'loading') { state.link.status = 'idle'; render(); } input.focus(); });
+  $('#file-button').addEventListener('click', () => $('#file-input').click());
+  $('#file-help-button').addEventListener('click', () => openDialog($('#import-help-dialog')));
+  $('#file-input').addEventListener('change', (event) => { handleFiles(event.target.files); event.target.value = ''; });
+
+  let dragDepth = 0;
+  const overlay = $('#drop-overlay');
+  document.addEventListener('dragenter', (event) => {
+    if (![...(event.dataTransfer?.types || [])].includes('Files')) return;
+    dragDepth += 1;
+    overlay.hidden = false;
+  });
+  document.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) overlay.hidden = true; });
+  document.addEventListener('dragover', (event) => { if ([...(event.dataTransfer?.types || [])].includes('Files')) event.preventDefault(); });
+  document.addEventListener('drop', (event) => {
+    dragDepth = 0;
+    overlay.hidden = true;
+    if (!event.dataTransfer?.files?.length) return;
+    event.preventDefault();
+    handleFiles(event.dataTransfer.files);
+  });
+
   document.addEventListener('click', (event) => {
-    const serviceButton = event.target.closest('.service-button');
-    if (serviceButton && !serviceButton.disabled) selectService(serviceButton.dataset.role, serviceButton.dataset.service);
+    const serviceButton = event.target.closest('#destination-grid .service-button');
+    if (serviceButton && !serviceButton.disabled) selectDestination(serviceButton.dataset.service);
     const close = event.target.closest('[data-close]');
     if (close) closeDialog(close.closest('dialog'));
   });
-  $('#route-source').addEventListener('click', () => scrollToStep('step-source'));
-  $('#route-destination').addEventListener('click', () => scrollToStep('step-destination'));
-  $('#demo-toggle').addEventListener('click', () => toggleDemo());
-  $('#hero-demo-button').addEventListener('click', () => {
-    toggleDemo(true);
-    if (!state.source) selectService('source', 'spotify');
-    if (!state.destination) selectService('destination', 'apple');
-    scrollToStep('step-connect');
-  });
-  $('#settings-button').addEventListener('click', () => openSettings());
   $('#about-button').addEventListener('click', () => openDialog($('#about-dialog')));
+  $('#owner-settings-button').addEventListener('click', () => { closeDialog($('#about-dialog')); openSettings(); });
   $('#settings-form').addEventListener('submit', saveSettings);
   $('#forget-tokens').addEventListener('click', forgetTokens);
   $('#copy-redirect').addEventListener('click', async () => {
@@ -902,40 +1003,23 @@ function bindEvents() {
       toast('Copy failed — select the text manually.', 'error');
     }
   });
-  $('#picker-filter').addEventListener('input', debounce((event) => {
-    state.filter = event.target.value;
-    renderPicker();
-  }, 120));
-  $('#select-all').addEventListener('click', () => selectAll(true));
-  $('#select-none').addEventListener('click', () => selectAll(false));
-  $('#reload-items').addEventListener('click', () => {
-    state.items[state.kind] = null;
-    state.loadError = null;
-    render();
-  });
-  $('#transfer-button').addEventListener('click', startTransfer);
+  $('#transfer-button').addEventListener('click', primaryAction);
   $('#cancel-button').addEventListener('click', cancelTransfer);
   $('#download-missing').addEventListener('click', downloadMissing);
   $('#transfer-more').addEventListener('click', () => {
-    for (const kind of KINDS) state.selected[kind.id].clear();
     resetTransfer();
-    render();
-    scrollToStep('step-content');
-  });
-  $('#start-over').addEventListener('click', () => {
-    resetTransfer();
-    resetContent();
-    state.source = null;
     state.destination = null;
     persistUi();
     render();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollToStep('step-destination');
   });
+  $('#start-over').addEventListener('click', startOver);
   for (const dialog of document.querySelectorAll('dialog')) {
     dialog.addEventListener('click', (event) => {
       if (event.target === dialog) closeDialog(dialog);
     });
   }
+  window.addEventListener('hashchange', handleHashFlags);
   window.addEventListener('beforeunload', (event) => {
     if (state.transfer?.running) {
       event.preventDefault();
@@ -944,20 +1028,46 @@ function bindEvents() {
   });
 }
 
+/** Hidden switches: #demo toggles the sample destination, #setup opens owner settings. */
+function handleHashFlags() {
+  const hash = (location.hash || '').toLowerCase();
+  if (hash === '#demo' && appConfig.allowDemo) toggleDemo(true);
+  else if (hash === '#demo-off' || hash === '#nodemo') toggleDemo(false);
+  else if (hash === '#setup' && appConfig.allowUserKeys) openSettings();
+  else return;
+  history.replaceState(null, '', `${location.origin}${location.pathname}${location.search}`);
+}
+
 async function boot() {
-  await loadLibrary(); // imported files survive the destination's login redirect
+  await loadLibrary(); // the imported playlist survives the destination's login redirect
   renderStatic();
-  restoreUi();
   bindEvents();
+  const hash = (location.hash || '').toLowerCase();
+  if (hash === '#demo' || hash === '#demo-off' || hash === '#nodemo' || hash === '#setup') handleHashFlags();
+  state.demo = isDemoMode();
   const redirect = consumeRedirect();
+  restoreUi();
+  const pending = session.get(PENDING_KEY, null);
+  session.remove(PENDING_KEY);
   render();
   if (redirect) {
-    await handleRedirect(redirect);
+    const ok = await handleRedirect(redirect);
     render();
-    scrollToStep(bothConnected() ? 'step-content' : 'step-connect');
+    if (ok && pending && pending.destination === redirect.provider && hasLibrary() && Date.now() - (pending.at || 0) < 30 * 60 * 1000) {
+      state.destination = pending.destination;
+      $('#option-public').checked = Boolean(pending.options?.publicPlaylists);
+      $('#option-suffix').checked = Boolean(pending.options?.suffix);
+      syncSelection(true);
+      for (const id of pending.deselected || []) for (const kind of KINDS) state.selected[kind.id].delete(id);
+      render();
+      await startTransfer();
+      return;
+    }
+    scrollToStep(hasLibrary() ? 'step-destination' : 'step-paste');
   }
-  await Promise.all([loadProfile(state.source), loadProfile(state.destination)]);
+  await loadProfile(state.destination);
   render();
+  if (hasLibrary()) scrollToStep('step-preview');
 }
 
 boot().catch((error) => {

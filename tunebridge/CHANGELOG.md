@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0 — 2026-10-28
+
+**Paste a link, log in once.** The source side no longer has a login at all.
+
+- New flow: paste the link of a public playlist → the box takes the service's logo and colours → preview (cover, name, every song) → pick a destination → one button *Log in with … & transfer*. The login happens on the destination's own website; the transfer starts automatically on return.
+- Link reading: Deezer directly from the browser; YouTube / YouTube Music via a free API key or the worker; Spotify, Apple Music, SoundCloud and TIDAL via the new helper worker (`proxy/cloudflare-worker.js` → `GET /resolve`), which also keeps the SoundCloud/Deezer token exchange (`POST /token`). Short links (spotify.link, on.soundcloud.com, deezer.page.link) are expanded by the worker.
+- Files still work as a fallback for private playlists and whole libraries: drop anywhere on the page or use *drop an exported file*.
+- Footer reduced to `©` (linking to the author's site) and the heart.
+- Developer-facing controls removed from the visible UI: owner settings via `#setup` or *About → Site owner settings*; sample destination via `#demo`.
+- Tests: link classifier for all six services, YouTube title cleaning, resolver client, worker parsers and router (38 total).
+
 ## 1.0.0 — 2026-10-28
 
 First public release.

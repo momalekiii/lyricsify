@@ -5,7 +5,8 @@ import { importSpotifyJson } from './spotify-export.js';
 import { importApplePlist, importAppleText, looksLikePlist, looksLikeAppleText } from './apple-music.js';
 import { isZip, listZipEntries, readZipEntry } from './zip.js';
 
-export { classifyLink, importDeezerLink, LINK_HINTS } from './links.js';
+export { classifyLink, linkHint, isImportableLink, importLink, importDeezerLink, importViaResolver, peekLink, PLATFORM_NAMES } from './links.js';
+export { cleanVideoTitle, importYouTubePlaylist } from './youtube.js';
 
 const MAX_ZIP_DEPTH = 2;
 const IGNORED_IN_ZIP = /(^|\/)(__MACOSX|\.DS_Store|StreamingHistory|Streaming_History|SearchQueries|Inferences|Identity|Payments|Userdata|Follow|Marquee|Wrapped|Identifiers|YourLibrary\.json\.bak)/i;

@@ -13,8 +13,9 @@ export class ImportProvider extends ProviderBase {
 
   get name() {
     const sources = getLibrary()?.sources || [];
-    if (sources.length === 1) return `${sources[0]} (imported)`;
-    return 'imported files';
+    if (sources.length === 1) return sources[0];
+    if (sources.length > 1) return sources.join(' + ');
+    return 'your import';
   }
 
   isConfigured() {

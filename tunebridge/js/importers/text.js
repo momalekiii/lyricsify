@@ -212,6 +212,7 @@ export function makePlaylist(name, tracks, origin = 'import', extra = {}) {
     isPublic: false,
     special: Boolean(extra.special),
     origin,
+    platform: extra.platform || '',
     tracks,
   };
 }
