@@ -40,7 +40,7 @@ export function getAppConfig() {
     appName: base.appName || 'TuneBridge',
     allowDemo: base.allowDemo !== false,
     allowUserKeys: base.allowUserKeys !== false,
-    ownerName: base.ownerName || 'Momalekiii',
+    ownerName: base.ownerName || 'momalekiii',
     ownerUrl: base.ownerUrl || 'https://momalekiii.github.io',
     repoUrl: base.repoUrl || 'https://github.com/momalekiii/tunebridge',
     resolverUrl: String(base.resolverUrl || '').trim().replace(/\/+$/, ''),

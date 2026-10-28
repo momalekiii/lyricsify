@@ -5,13 +5,14 @@ import { createProvider } from './js/providers/index.js';
 import { consumeRedirect, getRedirectUri, tokens } from './js/oauth.js';
 import { getServiceConfig, getUserSettings, saveUserSettings, getAppConfig, isDemoMode, setDemoMode } from './js/settings.js';
 import { runTransfer, summarize, missingAsCsv } from './js/transfer.js';
-import { session } from './js/storage.js';
+import { session, local } from './js/storage.js';
 import { el, debounce, formatDuration, isAbortError } from './js/util.js';
 import { importFiles, classifyLink, linkHint, importLink, peekLink, PLATFORM_NAMES, summarize as summarizeImport } from './js/importers/index.js';
 import { loadLibrary, getLibrary, hasLibrary, addToLibrary, clearLibrary } from './js/importers/library.js';
 
 const UI_KEY = 'tunebridge.ui.v2';
 const PENDING_KEY = 'tunebridge.pendingTransfer.v1';
+const DEFAULT_PLACEHOLDER = 'Paste a playlist link — Spotify, Apple Music, YouTube Music, SoundCloud, TIDAL, Deezer';
 const SOURCE = 'import';
 const TRACK_PREVIEW_LIMIT = 100;
 const $ = (selector) => document.querySelector(selector);
@@ -25,7 +26,7 @@ const state = {
   busy: {},
   transfer: null,
   demo: isDemoMode(),
-  link: { raw: '', info: null, status: 'idle', error: '', peek: null, progress: null, attempted: false },
+  link: { raw: '', info: null, status: 'idle', error: '', peek: null, progress: null, attempted: false, armed: null },
   notes: [],
 };
 
@@ -145,6 +146,8 @@ function closeDialog(dialog) {
   else dialog.removeAttribute('open');
 }
 
+const withArticle = (name) => `${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${name}`;
+
 function brandVars(serviceId) {
   const service = SERVICES[serviceId];
   if (!service) return '--brand:#8f9bff;--brand-2:#35e6ff;--ink:#0a0a0d';
@@ -186,8 +189,17 @@ function totalDuration(tracks = []) {
 // ---------------------------------------------------------------------------
 
 function renderStatic() {
-  const strip = $('#services-strip');
-  strip.replaceChildren(...LOGIN_SERVICE_IDS.map((id) => el('li', { style: brandVars(id) }, svg(id, 18), SERVICES[id].name)));
+  const dock = $('#platform-dock');
+  dock.replaceChildren(...LOGIN_SERVICE_IDS.map((id) => el('button', {
+    type: 'button',
+    class: 'dock-item',
+    style: brandVars(id),
+    dataset: { platform: id },
+    title: `Paste ${withArticle(SERVICES[id].name)} link`,
+    'aria-label': `${SERVICES[id].name} — paste ${withArticle(SERVICES[id].name)} playlist link`,
+    'aria-pressed': 'false',
+    on: { click: () => armPlatform(id) },
+  }, el('span', { class: 'dock-glow', 'aria-hidden': 'true' }), el('span', { class: 'dock-logo' }, svg(id, 24)), el('span', { class: 'dock-label', text: SERVICES[id].name }))));
 
   const table = $('#caps-table');
   const head = el('tr', {}, el('th', { text: 'Service' }), ...KINDS.map((kind) => el('th', { text: kind.label })));
@@ -242,6 +254,7 @@ function renderLinkBar() {
     icon.innerHTML = '<svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>';
     icon.dataset.platform = '';
   }
+  renderDock(platform);
   $('#link-clear').hidden = !raw;
   const go = $('#link-go');
   go.disabled = !raw || status === 'loading';
@@ -262,9 +275,39 @@ function renderLinkBar() {
       ' ',
       status === 'loading' ? 'Reading it now…' : status === 'ready' ? 'Imported below.' : 'recognised — press Enter or Preview.');
   } else if (problem) {
-    hint.classList.add(state.link.attempted || info?.kind === 'link' ? 'is-error' : '');
+    if (state.link.attempted || info?.kind === 'link') hint.classList.add('is-error');
     hint.textContent = problem;
   } else hint.textContent = '';
+}
+
+/** The row of service icons under the bar: the detected platform glows, the others step back. */
+function renderDock(activePlatform) {
+  const dock = $('#platform-dock');
+  const armed = state.link.armed;
+  dock.classList.toggle('has-active', Boolean(activePlatform));
+  for (const item of dock.children) {
+    const id = item.dataset.platform;
+    const on = id === activePlatform;
+    item.classList.toggle('is-on', on);
+    item.classList.toggle('is-armed', !activePlatform && id === armed);
+    item.setAttribute('aria-pressed', String(on));
+  }
+  const input = $('#link-input');
+  const expect = activePlatform || armed;
+  input.placeholder = expect ? `Paste ${withArticle(SERVICES[expect].name)} playlist or album link…` : DEFAULT_PLACEHOLDER;
+  const form = $('#link-form');
+  if (!activePlatform && armed) { form.dataset.armed = armed; form.setAttribute('style', brandVars(armed)); } else delete form.dataset.armed;
+}
+
+/** Clicking a dock icon: focus the bar and tell the visitor what to paste (the pasted link always wins). */
+function armPlatform(id) {
+  const input = $('#link-input');
+  state.link.armed = state.link.armed === id && !state.link.raw ? null : id;
+  renderLinkBar();
+  input.focus();
+  if (state.link.info?.kind === 'link' && state.link.info.platform !== id) {
+    toast(`That link is from ${PLATFORM_NAMES[state.link.info.platform]} — paste ${withArticle(SERVICES[id].name)} link to switch.`);
+  }
 }
 
 function renderPreview() {
@@ -445,6 +488,18 @@ function renderDestination() {
     el('span', { class: `service-note${note ? ' unsupported' : ''}`, text: note || 'Playlists · Albums · Artists' }));
     return button;
   }));
+
+  const notice = $('#destination-notice');
+  const anyConfigured = LOGIN_SERVICE_IDS.some((serviceId) => provider(serviceId).isConfigured());
+  if (!anyConfigured && !state.demo && appConfig.allowDemo) {
+    notice.hidden = false;
+    notice.replaceChildren(
+      el('p', {}, el('b', { text: 'This site isn’t connected to any music service yet.' }), ' You can still walk through the whole flow with a sample destination — it behaves like a real service but nothing is written anywhere.'),
+      el('button', { type: 'button', class: 'ghost-button', text: 'Try the sample destination', on: { click: () => toggleDemo(true) } }));
+  } else {
+    notice.hidden = true;
+    notice.replaceChildren();
+  }
 
   const panel = $('#destination-panel');
   panel.hidden = !state.destination;
@@ -669,7 +724,7 @@ async function startOver() {
   state.known.clear();
   state.expanded.clear();
   state.notes = [];
-  state.link = { raw: '', info: null, status: 'idle', error: '', peek: null, progress: null, attempted: false };
+  state.link = { raw: '', info: null, status: 'idle', error: '', peek: null, progress: null, attempted: false, armed: null };
   $('#link-input').value = '';
   providers.delete(SOURCE);
   delete state.profiles[SOURCE];
@@ -699,7 +754,20 @@ function readOptions() {
 }
 
 function savePendingTransfer(id) {
-  session.set(PENDING_KEY, { destination: id, options: readOptions(), deselected: deselectedIds(), at: Date.now() });
+  const pending = { destination: id, options: readOptions(), deselected: deselectedIds(), at: Date.now() };
+  session.set(PENDING_KEY, pending);
+  local.set(PENDING_KEY, pending); // fallback when the login finishes in a new tab (e.g. inside an embedded preview)
+}
+
+function clearPendingTransfer() {
+  session.remove(PENDING_KEY);
+  local.remove(PENDING_KEY);
+}
+
+function takePendingTransfer() {
+  const pending = session.get(PENDING_KEY, null) || local.get(PENDING_KEY, null);
+  clearPendingTransfer();
+  return pending;
 }
 
 async function primaryAction() {
@@ -719,14 +787,14 @@ async function primaryAction() {
   renderDestination();
   try {
     await instance.connect(); // redirect-based logins navigate away here and come back through boot()
-    session.remove(PENDING_KEY);
+    clearPendingTransfer();
     await loadProfile(id);
     state.busy[id] = false;
     render();
     toast(`Logged in to ${SERVICES[id].name}.`, 'success');
     await startTransfer();
   } catch (error) {
-    session.remove(PENDING_KEY);
+    clearPendingTransfer();
     state.busy[id] = false;
     toast(error.message || `Could not log in to ${SERVICES[id].name}.`, 'error');
     render();
@@ -992,6 +1060,7 @@ function bindEvents() {
     if (close) closeDialog(close.closest('dialog'));
   });
   $('#about-button').addEventListener('click', () => openDialog($('#about-dialog')));
+  $('#demo-badge').addEventListener('click', () => toggleDemo(false));
   $('#owner-settings-button').addEventListener('click', () => { closeDialog($('#about-dialog')); openSettings(); });
   $('#settings-form').addEventListener('submit', saveSettings);
   $('#forget-tokens').addEventListener('click', forgetTokens);
@@ -1047,8 +1116,7 @@ async function boot() {
   state.demo = isDemoMode();
   const redirect = consumeRedirect();
   restoreUi();
-  const pending = session.get(PENDING_KEY, null);
-  session.remove(PENDING_KEY);
+  const pending = takePendingTransfer();
   render();
   if (redirect) {
     const ok = await handleRedirect(redirect);

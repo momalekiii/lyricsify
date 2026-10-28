@@ -35,8 +35,12 @@ const MAX_TRACKS = 2000;
 // ---------------------------------------------------------------------------
 
 export function classifyLink(input = '') {
-  const raw = String(input ?? '').trim();
+  let raw = String(input ?? '').trim().replace(/^<|>$/g, '');
   if (!raw) return { kind: 'empty' };
+  if (/\s/.test(raw)) {
+    const embedded = raw.match(/(?:https?:\/\/[^\s<>"'()]+|spotify:(?:playlist|album|artist|track):[A-Za-z0-9]{22})/i);
+    if (embedded) raw = embedded[0].replace(/[.,;:!?]+$/, '');
+  }
   let match = raw.match(/^spotify:(playlist|album|artist|track):([A-Za-z0-9]{22})$/);
   if (match) return { kind: 'link', platform: 'spotify', type: match[1], id: match[2], url: `https://open.spotify.com/${match[1]}/${match[2]}` };
   let url;
@@ -59,7 +63,8 @@ export function classifyLink(input = '') {
     return link('apple', type, id, `https://music.apple.com/${match[1].toLowerCase()}/${type}/${type === 'playlist' ? 'playlist' : 'id'}/${id}`, { storefront: match[1].toLowerCase() });
   }
   if (/^(music\.)?youtube(-nocookie)?\.com$/.test(host) || host === 'youtu.be') {
-    const list = url.searchParams.get('list');
+    const browse = path.match(/^\/browse\/VL([A-Za-z0-9_-]+)/);
+    const list = url.searchParams.get('list') || (browse ? browse[1] : null);
     if (list && !/^(WL|LL)$/i.test(list)) return link('youtube', 'playlist', list, `https://www.youtube.com/playlist?list=${encodeURIComponent(list)}`);
     return link('youtube', list ? 'private' : url.searchParams.get('v') ? 'track' : 'unknown', '', raw);
   }
@@ -75,11 +80,11 @@ export function classifyLink(input = '') {
     const type = match[1].toLowerCase() === 'mix' ? 'playlist' : match[1].toLowerCase();
     return link('tidal', type, match[2], `https://tidal.com/browse/${match[1].toLowerCase()}/${match[2]}`);
   }
+  if (host === 'deezer.page.link' || host === 'link.deezer.com' || host === 'dzr.page.link') return link('deezer', 'short', '', raw);
   if (host === 'deezer.com' || host.endsWith('.deezer.com')) {
     match = path.match(/\/(playlist|album|artist|track)\/(\d+)/);
     return match ? link('deezer', match[1], match[2], `https://www.deezer.com/${match[1]}/${match[2]}`) : link('deezer', 'unknown', '', raw);
   }
-  if (host === 'deezer.page.link' || host === 'link.deezer.com' || host === 'dzr.page.link') return link('deezer', 'short', '', raw);
   return { kind: 'unknown', url: raw };
 }
 

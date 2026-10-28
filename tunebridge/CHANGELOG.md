@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.1 — 2026-10-28
+
+Fixes from the first real-browser test of the paste flow, plus the service dock.
+
+- **Fixed: nothing reacted after pasting.** `app.js?v=…` was versioned but the modules it imports were not, so a browser that had seen an earlier version kept stale modules and the script failed on load (no logo swap, dead buttons). `index.html` now carries an import map that pins every module to the release version (`npm run stamp`; `npm test` checks it).
+- **Fixed:** typing or pasting an incomplete link threw (`classList.add('')`) and stopped the bar from updating.
+- **New: service dock** under the bar — the six service icons; the one your link comes from glows in its brand gradient, the others step back. Tap one to be told what to paste. Replaces the "Works with" strip.
+- Links: URLs wrapped in share text ("Listen on Spotify: https://…") are extracted; `link.deezer.com` short links and `music.youtube.com/browse/VL…` are recognised.
+- Logging in from an embedded preview (iframe) opens the service's login in a new tab, since login pages refuse to render in frames; the pending transfer is picked up there.
+- A site with no destination configured offers the sample destination right in step 3 (visible only until a real service is set up); the sample-mode badge is a button that leaves sample mode.
+- Footer: "© Developed with ❤️ by momalekiii" (both © and the name link to the author's site).
+
 ## 1.1.0 — 2026-10-28
 
 **Paste a link, log in once.** The source side no longer has a login at all.

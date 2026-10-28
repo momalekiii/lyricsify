@@ -33,10 +33,23 @@ export const randomState = () => randomId(24);
  * The page reloads on the way back, so everything needed later lives in sessionStorage.
  */
 export function beginRedirectAuth({ provider, authorizeUrl, params, verifier = null, extra = null }) {
-  session.set(PENDING_KEY, { provider, verifier, state: params.state || null, extra, startedAt: Date.now() });
+  const pending = { provider, verifier, state: params.state || null, extra, startedAt: Date.now() };
+  session.set(PENDING_KEY, pending);
+  local.set(PENDING_KEY, pending); // read by the new tab when the login has to leave an embedded frame
   const url = `${authorizeUrl}${authorizeUrl.includes('?') ? '&' : '?'}${toQuery(params)}`;
+  if (isFramed()) {
+    // Login pages refuse to render inside iframes (X-Frame-Options), so leave the frame: a new tab
+    // completes the login, lands back on TuneBridge and picks the pending transfer up from storage.
+    const popup = window.open(url, '_blank');
+    if (popup) return new Promise(() => {});
+  }
   location.assign(url);
   return new Promise(() => {}); // never resolves: the page is navigating away
+}
+
+/** True when the app is embedded in another page (preview panes, iframes). */
+export function isFramed() {
+  try { return window.top !== window.self; } catch (_) { return true; }
 }
 
 /**
@@ -54,8 +67,10 @@ export function consumeRedirect() {
   const error = search.get('error') || hash.get('error') || hash.get('error_reason');
   if (!code && !token && !error) return null;
 
-  const pending = session.get(PENDING_KEY);
+  const fromLocal = local.get(PENDING_KEY);
+  const pending = session.get(PENDING_KEY) || (fromLocal && Date.now() - (fromLocal.startedAt || 0) < 30 * 60 * 1000 ? fromLocal : null);
   session.remove(PENDING_KEY);
+  local.remove(PENDING_KEY);
   history.replaceState(null, '', `${url.origin}${url.pathname}`);
 
   const errorDescription = search.get('error_description') || hash.get('error_description') || '';

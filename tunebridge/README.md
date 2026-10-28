@@ -4,7 +4,7 @@
 
 TuneBridge copies a public playlist (or album) from **Spotify, Apple Music, YouTube Music, SoundCloud, TIDAL or Deezer** to any of them. The visitor's side could not be simpler:
 
-1. **Paste the link** of a public playlist — the box lights up in that service's colours and shows its logo.
+1. **Paste the link** of a public playlist — the box lights up in that service's colours, shows its logo, and the service's icon under the bar glows.
 2. **Check the preview** — cover, name and every song, read without logging in anywhere.
 3. **Pick where it should go and log in there** — on that service's own website, with the login they always use. The transfer starts by itself the moment they come back.
 
@@ -71,8 +71,8 @@ Any other static host (Netlify, Vercel, Cloudflare Pages, your own server) works
 ### Releasing a new version
 
 1. Update `CHANGELOG.md` and the version in `package.json`.
-2. Bump the cache-busting query strings in `index.html` (`styles.css?v=…`, `app.js?v=…`, `config.js?v=…`) so returning visitors get the new files.
-3. Push to `main` (deploys automatically), then tag it: `git tag v1.0.0 && git push --tags` and, optionally, `gh release create v1.0.0 --notes-file CHANGELOG.md`.
+2. Run `npm run stamp`. It rewrites `index.html` so that `styles.css`, `config.js`, `app.js` **and every module under `js/`** (via an import map) carry `?v=<version>` — returning visitors can never mix cached old files with new ones. `npm test` fails if you forget.
+3. Push to `main` (deploys automatically), then tag it: `git tag v1.1.1 && git push --tags` and, optionally, `gh release create v1.1.1 --notes-file CHANGELOG.md`.
 
 ## Setting up the services (site owner, once)
 

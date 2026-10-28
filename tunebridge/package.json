@@ -1,6 +1,6 @@
 {
   "name": "tunebridge",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Move playlists, saved albums and followed artists between Spotify, Apple Music, YouTube Music, SoundCloud, TIDAL and Deezer — in the browser.",
   "private": true,
   "type": "module",
@@ -14,8 +14,10 @@
   "scripts": {
     "start": "python3 -m http.server 8000 --bind 127.0.0.1",
     "test": "node --test tests/*.test.mjs",
-    "check": "for f in app.js config.js js/*.js js/providers/*.js proxy/*.js; do node --check \"$f\" || exit 1; done",
-    "apple-token": "node scripts/apple-developer-token.mjs"
+    "check": "for f in app.js config.js js/*.js js/*/*.js proxy/*.js scripts/*.mjs; do node --check \"$f\" || exit 1; done",
+    "apple-token": "node scripts/apple-developer-token.mjs",
+    "stamp": "node scripts/stamp-version.mjs",
+    "stamp:check": "node scripts/stamp-version.mjs --check"
   },
   "engines": {
     "node": ">=20"

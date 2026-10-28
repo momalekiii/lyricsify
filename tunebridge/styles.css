@@ -173,12 +173,6 @@ main { width: min(1100px, 100% - clamp(28px, 8vw, 72px)); margin: 0 auto; paddin
 @keyframes dotC { 0%, 66% { background: rgba(255, 255, 255, 0.18); } 67%, 100% { background: #fff; } }
 
 /* Services strip */
-.services-strip-wrap { margin-top: 40px; }
-.services-strip-title { font-size: 11px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--quiet); }
-.services-strip { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 14px; margin: 14px 0 0; padding: 0; list-style: none; }
-.services-strip li { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--brand) 30%, transparent); background: color-mix(in srgb, var(--brand) 8%, transparent); font-size: 13px; font-weight: 600; color: var(--text); box-shadow: 0 0 20px -8px var(--brand); transition: transform 0.25s var(--ease), box-shadow 0.25s; }
-.services-strip li:hover { transform: translateY(-2px); box-shadow: 0 0 26px -4px var(--brand); }
-.services-strip svg { width: 18px; height: 18px; color: var(--brand); }
 
 /* Steps */
 .step { padding: clamp(28px, 5vw, 48px) 0; border-top: 1px solid var(--line); animation: fadeUp 0.45s var(--ease); scroll-margin-top: 120px; }
@@ -406,8 +400,6 @@ main { width: min(1100px, 100% - clamp(28px, 8vw, 72px)); margin: 0 auto; paddin
 }
 
 /* --- File / link import (no-login source) --- */
-.services-strip-note { max-width: 760px; margin: 14px auto 0; font-size: 13px; color: var(--muted); text-align: center; }
-.services-strip-note b { color: var(--text); }
 .service-flag.no-login { background: linear-gradient(120deg, rgba(242, 244, 255, 0.18), rgba(143, 155, 255, 0.28)); color: var(--text); }
 .import-card .drop-zone { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 22px 16px; border-radius: 14px; border: 1.5px dashed color-mix(in srgb, var(--brand-2) 55%, var(--line-strong)); background: rgba(255, 255, 255, 0.03); text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s, box-shadow 0.2s; }
 .import-card .drop-zone:hover, .import-card .drop-zone:focus-visible, .import-card .drop-zone.is-over { border-color: var(--brand-2); background: rgba(143, 155, 255, 0.08); box-shadow: 0 0 28px -10px var(--brand-2); outline: none; }
@@ -454,7 +446,7 @@ main { width: min(1100px, 100% - clamp(28px, 8vw, 72px)); margin: 0 auto; paddin
 .link-hint.is-error { color: #ff9d9d; }
 .link-hint .platform-pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px 2px 6px; border-radius: 999px; background: color-mix(in srgb, var(--brand) 14%, transparent); color: var(--brand); font-weight: 700; font-size: 12.5px; }
 .link-hint .platform-pill svg { width: 14px; height: 14px; }
-.link-alt { margin-top: 10px; font-size: 13px; color: var(--muted); }
+.link-alt { margin-top: 18px; font-size: 13px; color: var(--muted); }
 .link-like { padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: inherit; font-weight: 600; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--text) 35%, transparent); text-underline-offset: 3px; cursor: pointer; }
 .link-like:hover { text-decoration-color: currentColor; }
 @media (max-width: 600px) {
@@ -533,8 +525,53 @@ main { width: min(1100px, 100% - clamp(28px, 8vw, 72px)); margin: 0 auto; paddin
 .service-button .service-flag.ready { background: rgba(79, 240, 139, 0.14); color: #4ff08b; }
 
 /* Footer, simplified */
-.footer-copyright .footer-link { font-size: 16px; }
+.footer-copyright .footer-link:not(.footer-author) { font-size: 16px; }
 .preview-group .item { flex-wrap: wrap; }
 .preview-group .item-tracks { flex-basis: 100%; margin-top: 6px; }
 .playlist-card .card-check { position: absolute; top: 12px; right: 12px; padding: 8px; background: transparent; border-radius: 10px; }
 .playlist-card .card-check:hover { background: var(--surface-strong); }
+
+/* ---- v1.1.1: platform dock under the link bar ------------------------------------------- */
+.dock { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px 18px; margin: 18px auto 0; max-width: 680px; }
+.dock-item { --glow: color-mix(in srgb, var(--brand) 55%, transparent); position: relative; display: grid; justify-items: center; gap: 7px; padding: 0; border: 0; background: none; color: var(--muted); font: inherit; cursor: pointer; transition: opacity 0.35s var(--ease), transform 0.35s var(--ease); }
+.dock-glow { position: absolute; top: 0; left: 50%; width: 52px; height: 52px; border-radius: 50%; transform: translateX(-50%); background: radial-gradient(circle, var(--glow), transparent 70%); opacity: 0; filter: blur(10px); transition: opacity 0.4s var(--ease); pointer-events: none; }
+.dock-logo { position: relative; display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--brand) 32%, var(--line)); background: linear-gradient(180deg, color-mix(in srgb, var(--brand) 14%, transparent), color-mix(in srgb, var(--brand) 4%, transparent)), var(--bg-elevated); color: color-mix(in srgb, var(--brand) 80%, white); box-shadow: 0 0 18px -8px var(--brand), inset 0 1px 0 rgba(255, 255, 255, 0.06); transition: transform 0.35s var(--ease), box-shadow 0.35s var(--ease), background 0.35s, color 0.35s, border-color 0.35s; }
+.dock-logo svg { width: 24px; height: 24px; }
+.dock-label { font-size: 11.5px; font-weight: 600; letter-spacing: 0.01em; white-space: nowrap; transition: color 0.3s; }
+.dock-item:hover .dock-logo, .dock-item:focus-visible .dock-logo { transform: translateY(-2px); box-shadow: 0 0 26px -6px var(--brand); }
+.dock-item:focus-visible { outline: none; }
+.dock-item:focus-visible .dock-logo { border-color: var(--brand); }
+.dock-item.is-armed .dock-logo { border-color: color-mix(in srgb, var(--brand) 70%, var(--line)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 22%, transparent), 0 0 26px -6px var(--brand); }
+.dock-item.is-armed .dock-label { color: var(--text); }
+.dock.has-active .dock-item:not(.is-on) { opacity: 0.42; }
+.dock.has-active .dock-item:not(.is-on):hover { opacity: 0.8; }
+.dock-item.is-on { color: var(--text); transform: translateY(-3px); }
+.dock-item.is-on .dock-glow { opacity: 1; animation: dockPulse 2.4s ease-in-out infinite; }
+.dock-item.is-on .dock-logo { border-color: transparent; background: linear-gradient(135deg, var(--brand), var(--brand-2)); color: var(--ink, #0a0a0d); box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand) 50%, transparent), 0 0 34px -4px var(--brand), 0 10px 24px -12px var(--brand-2); animation: pop 0.5s var(--ease); }
+.dock-item.is-on .dock-label { color: var(--text); font-weight: 700; }
+@keyframes dockPulse { 0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.85; } 50% { transform: translateX(-50%) scale(1.35); opacity: 1; } }
+.link-bar[data-armed] { border-color: color-mix(in srgb, var(--brand) 45%, var(--line-strong)); box-shadow: 0 0 40px -18px var(--brand); }
+.link-bar[data-armed] .link-bar-icon { color: color-mix(in srgb, var(--brand) 75%, white); }
+@media (max-width: 560px) {
+  .dock { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px 4px; max-width: 420px; }
+  .dock-item { gap: 5px; min-width: 0; }
+  .dock-logo, .dock-glow { width: 44px; height: 44px; }
+  .dock-logo svg { width: 20px; height: 20px; }
+  .dock-label { font-size: 9.5px; line-height: 1.15; white-space: normal; text-align: center; max-width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { .dock-item.is-on .dock-glow, .dock-item.is-on .dock-logo { animation: none; } }
+
+/* Footer with author */
+.footer-copyright .footer-author { font-size: 14px; font-weight: 600; color: var(--text); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--text) 30%, transparent); }
+.footer-copyright .footer-author:hover { border-bottom-color: currentColor; }
+
+/* Destination notice (only when no service is configured yet) */
+.destination-notice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 18px; margin-top: 14px; padding: 14px 18px; border-radius: 16px; border: 1px dashed var(--line-strong); background: var(--surface); font-size: 13.5px; color: var(--muted); }
+.destination-notice p { margin: 0; flex: 1 1 320px; }
+.destination-notice b { color: var(--text); }
+.destination-notice .ghost-button { min-height: 38px; padding: 6px 16px; font-size: 13px; }
+
+/* Sample-mode badge is a button now */
+button.route-badge { cursor: pointer; font: inherit; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+@media (max-width: 480px) { button.route-badge { font-size: 10px; padding: 3px 7px; letter-spacing: 0.03em; } }
+button.route-badge:hover { filter: brightness(1.15); }

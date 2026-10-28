@@ -11,7 +11,7 @@
 //   http://127.0.0.1:8000/                     local development (python -m http.server 8000)
 window.TUNEBRIDGE_CONFIG = {
   appName: 'TuneBridge',
-  ownerName: 'Momalekiii',
+  ownerName: 'momalekiii',
   ownerUrl: 'https://momalekiii.github.io',
   repoUrl: 'https://github.com/momalekiii/tunebridge',
 
