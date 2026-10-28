@@ -6,6 +6,8 @@ TuneBridge rebuilds your playlists, saved albums and followed artists on another
 
 It is a static web app (plain HTML, CSS and JavaScript — no build step, no server, no database). You sign in with each service directly through its official login; the tokens stay in your browser. Nothing is uploaded anywhere because there is nowhere to upload it to.
 
+**How login works.** Visitors never need API keys or developer accounts: *Log in with Spotify* opens Spotify's own login page and brings them straight back. The only setup is a **one-time registration of TuneBridge with each service by the site owner** (free for most of them, about five minutes each) — see [SETUP.md](SETUP.md).
+
 ## What can move where?
 
 | Service | Playlists | Saved albums | Followed artists |
@@ -59,62 +61,9 @@ Any other static host (Netlify, Vercel, Cloudflare Pages, your own server) works
 
 ## Setting up the services
 
-Each streaming service requires its own free developer app. Keys go into `config.js` (public, shipped to the browser — never put a *secret* there) or into the Settings dialog, where they are stored in the visitor's browser only. Visitor-entered keys take precedence, so people can "bring their own key" if you prefer not to share yours.
+Everything a site owner needs — per-service steps, costs, user limits, the redirect URI, troubleshooting — lives in **[SETUP.md](SETUP.md)**. In short: register TuneBridge once with each service, paste the resulting Client ID / App ID / developer token into `config.js`, push. Keys in `config.js` are public by design (they ship to the browser); the only secret in the whole setup (SoundCloud's) goes into the included Cloudflare Worker, never into the page.
 
-### Spotify
-
-1. [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) → **Create app** → tick **Web API**.
-2. Add the redirect URI (e.g. `https://momalekiii.github.io/tunebridge/`).
-3. Copy the **Client ID** into `config.js → spotify.clientId`. No secret is needed (PKCE).
-4. New Spotify apps run in *development mode*: only users you add under **User Management** (up to 25) can sign in. Spotify currently grants extended quota only to registered businesses, which is why TuneBridge lets visitors use their own Client ID.
-5. Spotify-curated playlists (editorial/algorithmic) are no longer readable by development-mode apps; your own and other users' playlists are fine.
-
-### Apple Music
-
-1. Requires an [Apple Developer Program](https://developer.apple.com/programs/) membership.
-2. **Certificates, Identifiers & Profiles → Identifiers** → create a *Media ID*; **Keys** → create a key with **MusicKit** enabled and download the `.p8` file (note the Key ID and your Team ID).
-3. Mint a developer token (a signed JWT, valid up to 6 months):
-
-   ```bash
-   node scripts/apple-developer-token.mjs --key AuthKey_XXXX.p8 --key-id XXXX --team-id YYYY --origin https://momalekiii.github.io
-   ```
-
-4. Paste it into `config.js → apple.developerToken`. The `--origin` claim locks the token to your site, which matters because MusicKit tokens are visible to visitors by design. Set a reminder to renew it.
-5. Sign-in happens in Apple's MusicKit popup; visitors need an Apple Music subscription.
-
-### YouTube Music
-
-1. [console.cloud.google.com](https://console.cloud.google.com/) → create a project → **APIs & Services → Library** → enable **YouTube Data API v3**.
-2. **OAuth consent screen**: External, add the scope `https://www.googleapis.com/auth/youtube`. While the app is in *Testing*, add up to 100 test users; publishing with this scope requires Google's verification.
-3. **Credentials → Create credentials → OAuth client ID → Web application.** Add your origin (`https://momalekiii.github.io`) to *Authorized JavaScript origins* and the redirect URI to *Authorized redirect URIs*.
-4. Copy the **Client ID** into `config.js → youtube.clientId`.
-5. Mind the quota (see footnote 2 above). Google resets it daily at midnight Pacific time; the app warns when a selection is likely to exceed it.
-
-### SoundCloud
-
-1. Register an app at [soundcloud.com/you/apps](https://soundcloud.com/you/apps) (SoundCloud reviews API-access requests) and add the redirect URI.
-2. SoundCloud's token endpoint requires the client *secret*, which must not live in a public web page. Deploy the included Cloudflare Worker (free tier):
-
-   ```bash
-   npm create cloudflare@latest tunebridge-proxy      # "Hello World" worker; replace src/index.js with proxy/cloudflare-worker.js
-   npx wrangler secret put SOUNDCLOUD_CLIENT_ID
-   npx wrangler secret put SOUNDCLOUD_CLIENT_SECRET
-   # in wrangler.toml: [vars] ALLOWED_ORIGINS = "https://momalekiii.github.io,http://127.0.0.1:8000"
-   npx wrangler deploy
-   ```
-
-3. Put the Client ID in `config.js → soundcloud.clientId` and the worker URL in `soundcloud.tokenEndpoint`. (For strictly personal use you can instead enter the secret in the Settings dialog; it never leaves your browser, but don't publish it in `config.js`.)
-
-### TIDAL
-
-1. [developer.tidal.com/dashboard](https://developer.tidal.com/dashboard) → **Create new app**, add the redirect URI, and make sure the user scopes (`user.read`, `collection.read`, `collection.write`, `playlists.read`, `playlists.write`, `search.read`) are enabled for the app.
-2. Copy the **Client ID** into `config.js → tidal.clientId`. PKCE — no secret needed.
-3. TIDAL still labels its v2 API as beta; if an endpoint changes, the adapter lives in `js/providers/tidal.js`.
-
-### Deezer
-
-1. [developers.deezer.com/myapps](https://developers.deezer.com/myapps) → **Create a new application**. Set *Application domain* to your host (e.g. `momalekiii.github.io`) and the redirect URL to the redirect URI.
-2. Copy the **Application ID** into `config.js → deezer.appId`. Deezer uses the implicit flow, so no secret is required.
+Visitors can additionally bring their own developer app through the *Advanced* dialog (stored in their browser only, takes precedence over `config.js`) — handy when a Spotify development-mode app's 25-user list is full. Set `allowUserKeys: false` to hide that option.
 
 ## Project layout
 
@@ -122,7 +71,8 @@ Each streaming service requires its own free developer app. Keys go into `config
 ├── index.html            page structure (hero with animated workflow, wizard steps, dialogs, footer)
 ├── styles.css            dark theme, brand-coloured glows, flowing gradients, animations
 ├── app.js                UI controller (steps, picking content, progress, results, settings)
-├── config.js             deployment configuration (API keys, owner link, toggles)
+├── config.js             one-time owner configuration (service registrations, owner link, toggles)
+├── SETUP.md              step-by-step guide: register TuneBridge with each service so visitors can just log in
 ├── js/
 │   ├── services.js       service registry: logos, colours, capabilities, setup notes
 │   ├── oauth.js          PKCE helpers, redirect handling, token storage

@@ -75,7 +75,7 @@ export class SoundCloudProvider extends ProviderBase {
   }
 
   missingConfigMessage() {
-    if (this.config.clientId) return 'SoundCloud also needs a token proxy URL (or, for personal use, the client secret) next to the Client ID — open Settings to add it.';
+    if (this.config.clientId) return 'SoundCloud is half set up: the Client ID is there, but SoundCloud’s login also needs the token-proxy URL (or, for personal use only, the client secret) — see the setup guide.';
     return super.missingConfigMessage();
   }
 

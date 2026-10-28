@@ -101,7 +101,7 @@ main { width: min(1100px, 100% - clamp(28px, 8vw, 72px)); margin: 0 auto; paddin
 .gradient-button.small { min-height: 40px; padding: 8px 18px; font-size: 14px; }
 .ghost-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 12px 20px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--surface); font-weight: 600; font-size: 14px; transition: background 0.2s, border-color 0.2s, transform 0.2s; }
 .ghost-button:hover { background: var(--surface-strong); border-color: rgba(255, 255, 255, 0.28); transform: translateY(-1px); }
-.text-button { padding: 6px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 600; transition: color 0.2s, background 0.2s; }
+.text-button { display: inline-flex; align-items: center; text-decoration: none; padding: 6px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 600; transition: color 0.2s, background 0.2s; }
 .text-button:hover { color: var(--text); background: var(--surface-strong); }
 .text-button.danger:hover { color: #ff7b7b; }
 @keyframes flow { from { background-position: 0% 50%; } to { background-position: 200% 50%; } }
@@ -223,6 +223,7 @@ main { width: min(1100px, 100% - clamp(28px, 8vw, 72px)); margin: 0 auto; paddin
 .connect-actions .gradient-button { --from: var(--brand); --to: var(--brand-2); color: var(--ink, #0a0a0d); min-height: 44px; }
 .connect-hint { padding: 12px 14px; border-radius: 12px; background: rgba(255, 255, 255, 0.04); border: 1px dashed var(--line-strong); font-size: 13px; color: var(--muted); }
 .connect-hint strong { color: var(--text); }
+.connect-note { flex-basis: 100%; margin: -2px 0 0; font-size: 12.5px; color: var(--muted); }
 .connect-hint .hint-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .connect-hint .hint-actions .ghost-button, .connect-hint .hint-actions .pill-button { min-height: 36px; padding: 6px 14px; font-size: 13px; }
 

@@ -8,5 +8,6 @@ First public release.
 - "Liked Songs"-style libraries available as special playlists.
 - ISRC/UPC-first matching with title, artist and duration scoring that rejects covers, karaoke, live and remix lookalikes.
 - Live progress, cancellation, and a downloadable CSV of anything that could not be found.
-- Demo mode with sample libraries; Settings dialog for bring-your-own API keys.
+- Login-first flow: visitors just click *Log in with …* and sign in on the service's own site; the site owner registers the app once (see SETUP.md). Spotify's development-mode allow-list is explained in-app instead of a bare 403.
+- Demo mode with sample libraries; *Advanced* dialog for bring-your-own developer apps.
 - Cloudflare Worker token proxy (SoundCloud, optional Deezer) and an Apple Music developer-token script.

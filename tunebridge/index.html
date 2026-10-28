@@ -40,7 +40,7 @@
     </a>
     <nav class="topbar-actions" aria-label="App controls">
       <button class="pill-button demo-toggle" id="demo-toggle" type="button" aria-pressed="false" title="Try the flow with sample data">Demo</button>
-      <button class="icon-button" id="settings-button" type="button" aria-label="Settings and API keys" title="Settings">
+      <button class="icon-button" id="settings-button" type="button" aria-label="Advanced settings" title="Advanced settings">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
       </button>
       <button class="icon-button" id="about-button" type="button" aria-label="About TuneBridge" title="About">
@@ -60,9 +60,9 @@
 
   <main id="top">
     <section class="hero">
-      <p class="eyebrow">Playlist transfer · free · runs in your browser</p>
+      <p class="eyebrow">Playlist transfer · free · just log in · runs in your browser</p>
       <h1>Take your music <span class="gradient-text">everywhere.</span></h1>
-      <p class="lede">TuneBridge rebuilds your playlists, saved albums and followed artists on another streaming service. Pick where your music lives today, pick where it should go, and let the bridge do the walking.</p>
+      <p class="lede">TuneBridge rebuilds your playlists, saved albums and followed artists on another streaming service. Pick where your music lives today, pick where it should go, log in to both with your usual accounts, and let the bridge do the walking. No API keys, no passwords shared — you sign in on each service’s own website.</p>
       <div class="hero-actions">
         <a class="gradient-button hero-cta" href="#step-source" id="start-button">Start a transfer</a>
         <button class="ghost-button" id="hero-demo-button" type="button">Watch it work with demo data</button>
@@ -85,7 +85,7 @@
                 <div class="flow-row"><span class="flow-check"></span><span class="flow-cover" style="--c:#35e6ff"></span><span class="flow-lines"><b style="width:62%"></b><i style="width:22%"></i></span></div>
                 <div class="flow-row"><span class="flow-check"></span><span class="flow-cover" style="--c:#a238ff"></span><span class="flow-lines"><b style="width:38%"></b><i style="width:30%"></i></span></div>
               </div>
-              <p class="flow-caption"><b>2</b> Sign in to both and choose playlists, albums or artists</p>
+              <p class="flow-caption"><b>2</b> Log in to both and choose playlists, albums or artists</p>
             </div>
             <div class="flow-scene flow-scene-transfer">
               <div class="flow-transfer-card">
@@ -117,7 +117,7 @@
     </section>
 
     <section class="step" id="step-connect" aria-labelledby="step-connect-title" hidden>
-      <header class="step-header"><span class="step-number">3</span><div><h2 id="step-connect-title">Connect both accounts</h2><p>You sign in directly with each service. Tokens stay in this browser — TuneBridge has no server.</p></div></header>
+      <header class="step-header"><span class="step-number">3</span><div><h2 id="step-connect-title">Log in to both services</h2><p>Each button opens that service’s own login page — the one you always use — and brings you straight back here. TuneBridge never sees your password; the sign-in tokens stay in this browser, because TuneBridge has no server.</p></div></header>
       <div class="connect-grid" id="connect-grid"></div>
     </section>
 
@@ -180,8 +180,8 @@
     <form method="dialog" class="dialog-body" id="settings-form">
       <button class="dialog-close" type="button" data-close aria-label="Close">×</button>
       <p class="eyebrow">Settings</p>
-      <h2 id="settings-title">API keys &amp; connections</h2>
-      <p class="dialog-intro">Each streaming service requires its own (free) developer app. Keys you enter here are saved only in this browser. The site owner can also pre-fill them in <code>config.js</code>.</p>
+      <h2 id="settings-title">Advanced: use your own developer apps</h2>
+      <p class="dialog-intro">Normally you don’t need anything here — you just log in. The site owner registers TuneBridge with each service once (in <code>config.js</code>) and visitors sign in with their own accounts. Use this dialog only if a service isn’t switched on for this site, or if you hit Spotify’s 25-user limit for the site’s app: paste the keys of your own (free) developer app. They are saved only in this browser and take precedence over the site’s.</p>
       <div class="redirect-box">
         <span>Redirect URI to register with every service</span>
         <code id="redirect-uri"></code>
@@ -202,7 +202,7 @@
       <button class="dialog-close" type="button" data-close aria-label="Close">×</button>
       <p class="eyebrow">About</p>
       <h2 id="about-title">TuneBridge is a bridge, not a vault.</h2>
-      <p>Everything happens in your browser: you sign in with each service directly, TuneBridge reads your library through the official APIs, finds the same songs on the other side (by ISRC first, then title, artist and duration) and recreates your playlists there. Nothing is uploaded to a TuneBridge server, because there isn’t one.</p>
+      <p>Everything happens in your browser: you log in on each service’s own website (standard OAuth — TuneBridge never sees your password), TuneBridge reads your library through the official APIs, finds the same songs on the other side (by ISRC first, then title, artist and duration) and recreates your playlists there. Nothing is uploaded to a TuneBridge server, because there isn’t one.</p>
       <h3>What can move where?</h3>
       <div class="caps-table-wrap"><table class="caps-table" id="caps-table"></table></div>
       <h3>Good to know</h3>

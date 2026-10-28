@@ -275,7 +275,7 @@ function renderConnect() {
       if (profile?.image) status.append(el('img', { src: profile.image, alt: '' }));
       status.append(el('span', { text: profile ? `Connected as ${profile.name}` : 'Connected' }));
     } else {
-      status.append(el('span', { class: 'dot' }), el('span', { text: busy ? `Opening ${service.name} sign-in…` : 'Not connected yet' }));
+      status.append(el('span', { class: 'dot' }), el('span', { text: busy ? `Opening ${service.name} sign-in…` : 'Not signed in yet' }));
     }
     card.append(status);
 
@@ -284,13 +284,17 @@ function renderConnect() {
       if (profile?.url) actions.append(el('a', { class: 'ghost-button', href: profile.url, target: '_blank', rel: 'noreferrer', text: `Open ${service.name}` }));
       actions.append(el('button', { type: 'button', class: 'text-button', text: 'Disconnect', on: { click: () => disconnect(id) } }));
     } else if (instance.isConfigured()) {
-      actions.append(el('button', { type: 'button', class: `gradient-button${service.ink === '#ffffff' ? ' light-ink' : ''}`, disabled: Boolean(busy), on: { click: () => connect(id) } }, svg(id, 18), busy ? 'Redirecting…' : `Connect ${service.name}`));
+      actions.append(el('button', { type: 'button', class: `gradient-button${service.ink === '#ffffff' ? ' light-ink' : ''}`, disabled: Boolean(busy), on: { click: () => connect(id) } }, svg(id, 18), busy ? 'Redirecting…' : `Log in with ${service.name}`));
+      actions.append(el('p', { class: 'connect-note', text: `Opens ${service.name}’s own login page, then brings you straight back here.` }));
     } else {
+      // Not configured by the site owner: visitors never need keys, so say so plainly and
+      // keep the "bring your own developer app" escape hatch out of the way.
       const hint = el('div', { class: 'connect-hint' });
-      hint.append(el('div', {}, el('strong', { text: `${service.name} isn’t set up on this TuneBridge yet.` }), ` ${instance.missingConfigMessage()}`));
+      hint.append(el('div', {}, el('strong', { text: `${service.name} login isn’t switched on for this site yet.` }), ` ${instance.missingConfigMessage()}`));
       const hintActions = el('div', { class: 'hint-actions' });
-      if (appConfig.allowUserKeys) hintActions.append(el('button', { type: 'button', class: 'ghost-button', text: 'Add my own API key', on: { click: () => openSettings(id) } }));
       if (appConfig.allowDemo && !state.demo) hintActions.append(el('button', { type: 'button', class: 'pill-button', text: 'Try with demo data', on: { click: () => toggleDemo(true) } }));
+      hintActions.append(el('a', { class: 'text-button', href: appConfig.setupUrl, target: '_blank', rel: 'noreferrer', text: 'Site owner? Setup guide ↗' }));
+      if (appConfig.allowUserKeys) hintActions.append(el('button', { type: 'button', class: 'text-button', text: 'Advanced: use my own developer app', on: { click: () => openSettings(id) } }));
       hint.append(hintActions);
       actions.append(hint);
     }

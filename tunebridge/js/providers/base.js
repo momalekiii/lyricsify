@@ -47,7 +47,7 @@ export class ProviderBase {
 
   /** Actionable hint shown when credentials are missing (the UI adds the "not set up" headline). */
   missingConfigMessage() {
-    return `Add your own ${this.def.credentials[0]?.label || 'API key'} in Settings (free developer account), or try the demo.`;
+    return `Visitors never need keys: the site owner registers TuneBridge with ${this.name} once (a one-time step), and from then on everyone simply logs in with their own ${this.name} account.`;
   }
 
   getToken() {

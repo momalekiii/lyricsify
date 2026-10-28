@@ -1,22 +1,29 @@
-// TuneBridge deployment configuration.
+// TuneBridge deployment configuration — ONE-TIME SETUP BY THE SITE OWNER.
 //
-// Fill in the credentials for the services you want to offer. Everything here is public
-// (it ships to the browser) — never put a client secret in this file for a public site.
-// Visitors can also add their own keys through the Settings dialog; those are stored only
-// in their browser and take precedence over the values below.
+// Visitors never need API keys: they click "Log in with Spotify" (etc.), sign in on the
+// service's own website and come straight back. What the services need in exchange is
+// that TuneBridge itself is registered with them once, which is what this file holds.
+// Step-by-step instructions for every service are in SETUP.md (≈5 minutes each).
 //
-// Register this exact redirect URI with every service (shown in Settings as well):
+// Everything here is public (it ships to the browser) — never put a client secret in this
+// file for a public site. Visitors can also add their own keys through the Advanced dialog;
+// those are stored only in their browser and take precedence over the values below.
+//
+// Register this exact redirect URI with every service (shown in Advanced settings as well):
 //   https://momalekiii.github.io/tunebridge/   the published site (trailing slash matters)
 //   http://127.0.0.1:8000/                     local development (python -m http.server 8000 in the repo root)
 window.TUNEBRIDGE_CONFIG = {
   appName: 'TuneBridge',
   ownerName: 'Momalekiii',
   ownerUrl: 'https://momalekiii.github.io',
+  // Where the "Site owner? Setup guide" link in the app points (SETUP.md in this repository).
+  repoUrl: 'https://github.com/momalekiii/tunebridge',
 
   // Show the "Demo" toggle so visitors can try the flow with sample libraries.
   allowDemo: true,
-  // Let visitors paste their own API keys in Settings (recommended: Spotify dev-mode apps
-  // are limited to 25 allow-listed users, so "bring your own key" keeps the tool usable).
+  // Keep the "Advanced: use my own developer app" escape hatch (recommended: Spotify
+  // dev-mode apps are limited to 25 allow-listed users, so "bring your own app" keeps the
+  // tool usable for everyone else). Set to false to hide it completely.
   allowUserKeys: true,
 
   spotify: {

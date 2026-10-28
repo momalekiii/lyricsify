@@ -42,6 +42,8 @@ export function getAppConfig() {
     allowUserKeys: base.allowUserKeys !== false,
     ownerName: base.ownerName || 'Momalekiii',
     ownerUrl: base.ownerUrl || 'https://momalekiii.github.io',
+    repoUrl: base.repoUrl || 'https://github.com/momalekiii/tunebridge',
+    setupUrl: base.setupUrl || `${(base.repoUrl || 'https://github.com/momalekiii/tunebridge').replace(/\/$/, '')}/blob/main/SETUP.md`,
   };
 }
 

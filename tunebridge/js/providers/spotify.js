@@ -1,5 +1,5 @@
 // Spotify Web API adapter — Authorization Code with PKCE (no secret needed in the browser).
-import { ProviderBase, expiresAtFrom } from './base.js';
+import { ProviderBase, AuthError, expiresAtFrom } from './base.js';
 import { http, ApiError } from '../http.js';
 import { beginRedirectAuth, createPkcePair, randomState, getRedirectUri } from '../oauth.js';
 import { chunk, unique } from '../util.js';
@@ -126,7 +126,16 @@ export class SpotifyProvider extends ProviderBase {
   }
 
   async getProfile() {
-    const me = await this.api('/me');
+    let me;
+    try {
+      me = await this.api('/me');
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 403) {
+        // Development-mode Spotify apps only admit users the app owner has allow-listed.
+        throw new AuthError(this.id, 'Spotify let you log in but won’t let this site read your account: the Spotify app behind this site is in development mode, which only admits up to 25 people the site owner has allow-listed. Ask the owner to add the e-mail of your Spotify account under “User Management”, or use your own Spotify app via Advanced settings.');
+      }
+      throw error;
+    }
     this.profile = { id: me.id, name: me.display_name || me.id, image: me.images?.[0]?.url || '', url: me.external_urls?.spotify || '', country: me.country || '' };
     return this.profile;
   }
