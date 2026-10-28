@@ -11,6 +11,8 @@ Fixes from the first real-browser test of the paste flow, plus the service dock.
 - Logging in from an embedded preview (iframe) opens the service's login in a new tab, since login pages refuse to render in frames; the pending transfer is picked up there.
 - A site with no destination configured offers the sample destination right in step 3 (visible only until a real service is set up); the sample-mode badge is a button that leaves sample mode.
 - Footer: "© Developed with ❤️ by momalekiii" (both © and the name link to the author's site).
+- After a reload the dock keeps glowing for the service the loaded playlist came from.
+- Verification: `tests/e2e/browser.mjs` drives a real Chromium through the whole app against mocked endpoints — link bar for all six services, Deezer paste, the worker's own code answering `/resolve`, four file formats, a complete Spotify PKCE login round-trip with auto-resumed transfer, dialogs, settings, mobile (66 checks). The worker was also exercised under Cloudflare's runtime (`wrangler dev`): index, CORS allow/deny, every error path, `/token`.
 
 ## 1.1.0 — 2026-10-28
 

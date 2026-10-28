@@ -254,7 +254,7 @@ function renderLinkBar() {
     icon.innerHTML = '<svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>';
     icon.dataset.platform = '';
   }
-  renderDock(platform);
+  renderDock(platform, platform || (!raw && hasLibrary() ? sourcePlatform() : '') || '');
   $('#link-clear').hidden = !raw;
   const go = $('#link-go');
   go.disabled = !raw || status === 'loading';
@@ -281,13 +281,13 @@ function renderLinkBar() {
 }
 
 /** The row of service icons under the bar: the detected platform glows, the others step back. */
-function renderDock(activePlatform) {
+function renderDock(activePlatform, glowPlatform = activePlatform) {
   const dock = $('#platform-dock');
   const armed = state.link.armed;
-  dock.classList.toggle('has-active', Boolean(activePlatform));
+  dock.classList.toggle('has-active', Boolean(glowPlatform));
   for (const item of dock.children) {
     const id = item.dataset.platform;
-    const on = id === activePlatform;
+    const on = id === glowPlatform;
     item.classList.toggle('is-on', on);
     item.classList.toggle('is-armed', !activePlatform && id === armed);
     item.setAttribute('aria-pressed', String(on));

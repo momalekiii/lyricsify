@@ -1,0 +1,4 @@
+Track URI,Track Name,Album Name,Artist Name(s),Release Date,Duration (ms),Popularity,Explicit,Added By,Added At,ISRC
+spotify:track:t1,Dreams,Rumours,Fleetwood Mac,1977-02-04,257800,85,false,me,2024-01-01,USRE17600016
+spotify:track:t2,Get Lucky,Random Access Memories,"Daft Punk, Pharrell Williams",2013-05-17,369626,80,false,me,2024-01-01,USQX91300108
+spotify:track:t3,Some Obscure Demo,Nothing,Nobody,2020-01-01,180000,1,false,me,2024-01-01,

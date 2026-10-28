@@ -117,6 +117,8 @@ npm run check   # syntax-check every module
 
 No dependencies, no build step: edit the files and reload.
 
+**Real-browser check (optional):** `npm start` in one terminal, then `npm i --no-save puppeteer-core` and `CHROME=/path/to/chrome npm run e2e`. It drives a headless Chromium through the complete flow against mocked service endpoints — all six link types, Deezer paste, the helper worker's code answering `/resolve`, file imports, a full Spotify login round-trip with the auto-resumed transfer, dialogs, settings and the mobile layout (66 checks, no real network calls).
+
 ## Privacy
 
 TuneBridge has no backend. OAuth tokens are stored in `localStorage` of your browser (use **Settings → Sign out of all services** to remove them), API keys you enter are stored there too, and the only servers contacted are the streaming services themselves (plus your own token proxy if you use SoundCloud).

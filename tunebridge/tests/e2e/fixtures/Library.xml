@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Tracks</key>
+	<dict>
+		<key>1001</key>
+		<dict><key>Track ID</key><integer>1001</integer><key>Name</key><string>Dreams</string><key>Artist</key><string>Fleetwood Mac</string><key>Album</key><string>Rumours</string><key>Total Time</key><integer>257800</integer></dict>
+		<key>1002</key>
+		<dict><key>Track ID</key><integer>1002</integer><key>Name</key><string>Nights</string><key>Artist</key><string>Frank Ocean</string><key>Album</key><string>Blonde</string><key>Total Time</key><integer>307000</integer></dict>
+	</dict>
+	<key>Playlists</key>
+	<array>
+		<dict><key>Name</key><string>Sunday Chill</string><key>Playlist ID</key><integer>7</integer><key>Playlist Items</key><array><dict><key>Track ID</key><integer>1001</integer></dict><dict><key>Track ID</key><integer>1002</integer></dict></array></dict>
+	</array>
+</dict>
+</plist>

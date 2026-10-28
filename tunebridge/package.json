@@ -17,7 +17,8 @@
     "check": "for f in app.js config.js js/*.js js/*/*.js proxy/*.js scripts/*.mjs; do node --check \"$f\" || exit 1; done",
     "apple-token": "node scripts/apple-developer-token.mjs",
     "stamp": "node scripts/stamp-version.mjs",
-    "stamp:check": "node scripts/stamp-version.mjs --check"
+    "stamp:check": "node scripts/stamp-version.mjs --check",
+    "e2e": "node tests/e2e/browser.mjs"
   },
   "engines": {
     "node": ">=20"
