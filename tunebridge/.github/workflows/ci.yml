@@ -1,0 +1,18 @@
+# Runs the test suite for pull requests and non-main branches.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: for f in app.js config.js js/*.js js/providers/*.js proxy/*.js; do node --check "$f"; done
+      - run: node --test tests/*.test.mjs

@@ -6,8 +6,8 @@
 // in their browser and take precedence over the values below.
 //
 // Register this exact redirect URI with every service (shown in Settings as well):
-//   https://<your-user>.github.io/<repo>/      e.g. https://momalekiii.github.io/tunebridge/
-//   http://127.0.0.1:8000/tunebridge/          for local development
+//   https://momalekiii.github.io/tunebridge/   the published site (trailing slash matters)
+//   http://127.0.0.1:8000/                     local development (python -m http.server 8000 in the repo root)
 window.TUNEBRIDGE_CONFIG = {
   appName: 'TuneBridge',
   ownerName: 'Momalekiii',

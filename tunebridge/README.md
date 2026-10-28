@@ -30,25 +30,32 @@ For every track TuneBridge first tries the **ISRC** (the industry-standard recor
 
 ## Try it
 
-- **Demo mode** (the *Demo* toggle in the top bar) runs the whole flow with sample libraries and needs no keys — useful to see how it works and to test the UI.
-- **Run locally:**
+- **Live:** <https://momalekiii.github.io/tunebridge/> — the *Demo* toggle in the top bar runs the whole flow with sample libraries and needs no keys.
+- **Locally** (from the repository root):
 
   ```bash
-  cd tunebridge
-  python -m http.server 8000 --bind 127.0.0.1
+  python -m http.server 8000 --bind 127.0.0.1     # or: npm start
   # open http://127.0.0.1:8000/
   ```
 
-  Use `127.0.0.1` rather than `localhost`: Spotify no longer accepts `localhost` redirect URIs.
+  Use `127.0.0.1` rather than `localhost`: Spotify no longer accepts `localhost` redirect URIs. ES modules need an HTTP server, so don't open `index.html` from the file system.
 
-## Deploy it (GitHub Pages)
+## Deploy (GitHub Pages)
 
-1. Put the contents of this folder in its own repository (for example `momalekiii/tunebridge`).
-2. **Settings → Pages → Build and deployment → Deploy from a branch** (`main`, `/ (root)`).
-3. Your site is `https://<user>.github.io/tunebridge/`. That URL — with the trailing slash — is the **redirect URI** you register with every service. The Settings dialog shows the exact value for whatever URL the app is running on, with a copy button.
-4. Fill in `config.js` with your API keys (see below) and push.
+This repository deploys itself. Every push to `main` runs the tests and publishes the site with the included workflow ([`.github/workflows/pages.yml`](.github/workflows/pages.yml)).
 
-Any other static host (Netlify, Vercel, Cloudflare Pages, your own server) works the same way.
+1. Create the repository `momalekiii/tunebridge` and push these files to `main`.
+2. The first workflow run enables GitHub Pages automatically (**Settings → Pages** should show *Source: GitHub Actions*; if it doesn't, select it there and re-run the workflow).
+3. The site is live at **`https://momalekiii.github.io/tunebridge/`**. That URL — with the trailing slash — is the **redirect URI** to register with every service. The Settings dialog in the app shows the exact value for whatever URL it runs on, with a copy button.
+4. Fill in `config.js` with your API keys (see below) and push again.
+
+Any other static host (Netlify, Vercel, Cloudflare Pages, your own server) works the same way: upload the files, register the new URL as the redirect URI.
+
+### Releasing a new version
+
+1. Update `CHANGELOG.md` and the version in `package.json`.
+2. Bump the cache-busting query strings in `index.html` (`styles.css?v=…`, `app.js?v=…`, `config.js?v=…`) so returning visitors get the new files.
+3. Push to `main` (deploys automatically), then tag it: `git tag v1.0.0 && git push --tags` and, optionally, `gh release create v1.0.0 --notes-file CHANGELOG.md`.
 
 ## Setting up the services
 
@@ -112,7 +119,6 @@ Each streaming service requires its own free developer app. Keys go into `config
 ## Project layout
 
 ```
-tunebridge/
 ├── index.html            page structure (hero with animated workflow, wizard steps, dialogs, footer)
 ├── styles.css            dark theme, brand-coloured glows, flowing gradients, animations
 ├── app.js                UI controller (steps, picking content, progress, results, settings)
@@ -125,9 +131,10 @@ tunebridge/
 │   ├── transfer.js       the transfer engine (pure logic, no DOM)
 │   ├── settings.js       config.js + per-browser overrides
 │   └── providers/        one adapter per service + demo provider
-├── proxy/cloudflare-worker.js   token exchange proxy for SoundCloud
+├── proxy/cloudflare-worker.js   token exchange proxy for SoundCloud (optionally Deezer)
 ├── scripts/apple-developer-token.mjs
-└── tests/                node --test suites for matching and the engine
+├── tests/                node --test suites (matching, engine, adapters against mocked APIs)
+└── .github/workflows/    CI + GitHub Pages deployment
 ```
 
 Adding a service means implementing the adapter interface in `js/providers/base.js` (list → match → create/add) and registering it in `js/services.js`.
@@ -135,9 +142,11 @@ Adding a service means implementing the adapter interface in `js/providers/base.
 ## Development
 
 ```bash
-node --test tests/          # matching + transfer engine tests (uses the demo providers)
-node --check app.js         # quick syntax check
+npm test        # node --test tests/*.test.mjs  (matching, transfer engine, adapters with mocked APIs)
+npm run check   # syntax-check every module
 ```
+
+No dependencies, no build step: edit the files and reload.
 
 ## Privacy
 
